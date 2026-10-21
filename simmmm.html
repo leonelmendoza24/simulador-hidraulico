@@ -1,0 +1,1719 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulador Hidráulico de Arroyos Urbanos - Santa Marta</title>
+<meta name="description" content="Simulador interactivo 3D de dinámica de canales abiertos y mitigación de inundaciones urbanas por arroyos en Santa Marta.">
+
+<!-- Tipografías y librerías externas (CDN estables) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+<style>
+/* =====================================================================
+   1. TOKENS DE DISEÑO (paleta hidráulica: azules profundos, grises pizarra,
+      alertas en ámbar y rojo)
+   ===================================================================== */
+:root{
+  --navy:#0A2540;
+  --deep:#12426B;
+  --slate:#3A4A5A;
+  --slate-2:#5B6B7B;
+  --mist:#E9EFF4;
+  --paper:#F6F8FA;
+  --white:#FFFFFF;
+  --line:#CAD5DF;
+  --water:#1F86C8;
+  --water-l:#7CC4EE;
+  --teal:#0E8F8C;
+  --ok:#2A9466;
+  --ok-bg:#DDF2E8;
+  --warn:#B97A00;
+  --warn-bg:#FDEFC9;
+  --bad:#C63A28;
+  --bad-bg:#FADCD6;
+  --r-sm:4px;
+  --r-md:8px;
+  --font-ui:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-head:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--mist);color:var(--navy);
+  font-family:var(--font-ui);font-size:14px;line-height:1.5;
+  font-variant-numeric:tabular-nums;
+}
+sub,sup{line-height:0}
+:focus-visible{outline:3px solid var(--water);outline-offset:2px}
+
+/* =====================================================================
+   2. CABECERA
+   ===================================================================== */
+.hdr{
+  background:
+    repeating-linear-gradient(172deg,rgba(124,196,238,.07) 0 1px,transparent 1px 22px),
+    var(--navy);
+  color:#fff;padding:22px 24px 18px;
+}
+.hdr-in{max-width:1680px;margin:0 auto;display:flex;flex-wrap:wrap;gap:12px 32px;justify-content:space-between;align-items:flex-end}
+.hdr h1{font-family:var(--font-head);font-weight:700;font-size:clamp(1.5rem,2.6vw,2.2rem);line-height:1.1;margin:0;letter-spacing:.2px}
+.hdr .sub{margin:6px 0 0;color:#B9D3E6;max-width:68ch}
+.badges{display:flex;flex-wrap:wrap;gap:8px}
+.badge{border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:3px 12px;font-size:12.5px;color:#DCEBF6}
+.authors{margin:10px 0 0;font-size:13px;color:#9FBFD6}
+
+/* =====================================================================
+   3. DISTRIBUCIÓN GENERAL (CSS Grid)
+   ===================================================================== */
+.app{max-width:1680px;margin:0 auto;padding:16px;display:grid;gap:16px;
+  grid-template-columns:304px minmax(0,1fr) 304px;align-items:start}
+.panel{background:var(--white);border:1px solid var(--line);border-radius:var(--r-md);padding:16px}
+.panel h2{font-family:var(--font-head);font-size:1.05rem;font-weight:600;margin:0 0 10px}
+.controls{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
+.center{display:grid;gap:16px;min-width:0}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:1240px){
+  .app{grid-template-columns:304px minmax(0,1fr)}
+  .results{grid-column:1 / -1}
+  .results-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+}
+@media (max-width:820px){
+  .app{grid-template-columns:minmax(0,1fr);padding:10px}
+  .controls{position:static;max-height:none}
+  .grid2{grid-template-columns:minmax(0,1fr)}
+}
+
+/* =====================================================================
+   4. PANEL DE CONTROL
+   ===================================================================== */
+.presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.btn{font:inherit;font-weight:500;font-size:12.5px;border:1px solid var(--line);background:var(--paper);color:var(--navy);
+  border-radius:var(--r-sm);padding:5px 10px;cursor:pointer}
+.btn:hover{background:#E3ECF3;border-color:#A8BBCB}
+.btn.pri{background:var(--deep);color:#fff;border-color:var(--deep)}
+.btn.pri:hover{background:var(--navy)}
+.ctl{margin-bottom:13px}
+.ctl-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.ctl-head label{font-weight:500}
+.unit{color:var(--slate-2);font-size:12px}
+.ctl-row{display:grid;grid-template-columns:minmax(0,1fr) 84px;gap:10px;align-items:center;margin-top:4px}
+input[type=range]{width:100%;accent-color:var(--water);margin:0}
+input[type=text]{font:inherit;width:100%;border:1px solid var(--line);border-radius:var(--r-sm);padding:4px 7px;text-align:right;background:#fff;color:var(--navy)}
+input[type=text]:focus{border-color:var(--water)}
+.ctl.off{opacity:.45}
+details.adv{border-top:1px solid var(--line);padding-top:10px;margin-top:4px}
+details.adv summary{cursor:pointer;font-weight:600;margin-bottom:10px}
+.check{display:flex;align-items:center;gap:8px;margin:2px 0 12px;font-weight:500}
+.check input{width:16px;height:16px;accent-color:var(--water)}
+.note{font-size:12px;color:var(--slate-2);margin:6px 0 0}
+
+/* =====================================================================
+   5. ESCENARIO 3D
+   ===================================================================== */
+.stage-bar{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px}
+.stage-bar h2{margin:0}
+.stage-tools{display:flex;gap:6px;flex-wrap:wrap}
+.stage{position:relative;border-radius:var(--r-md);overflow:hidden;border:1px solid var(--line);
+  background:linear-gradient(#D6E6F2,#F1F6FA 70%)}
+#scene{display:block;width:100%;height:clamp(340px,52vw,560px);cursor:grab;touch-action:none}
+#scene:active{cursor:grabbing}
+.status{position:absolute;left:12px;top:12px;padding:6px 12px;border-radius:var(--r-sm);font-weight:600;font-size:13px;border:1px solid transparent}
+.status.ok{background:var(--ok-bg);color:#14633F;border-color:#9AD3B7}
+.status.warn{background:var(--warn-bg);color:#7A5200;border-color:#EBCB77}
+.status.bad{background:var(--bad-bg);color:#8E2314;border-color:#EDA79C}
+.hint{position:absolute;right:12px;bottom:8px;font-size:11.5px;color:var(--slate-2);background:rgba(255,255,255,.75);padding:2px 8px;border-radius:var(--r-sm)}
+.tip{position:absolute;pointer-events:none;display:none;background:rgba(10,37,64,.92);color:#fff;font-size:12px;padding:4px 9px;border-radius:4px;white-space:nowrap;z-index:2}
+.hud{position:absolute;right:12px;top:12px;max-width:270px;background:rgba(10,37,64,.9);color:#fff;font-size:12.5px;line-height:1.5;padding:8px 12px;border-radius:6px;display:none}
+.hud .bad{color:#FFB4A8;font-weight:600}.hud .ok{color:#9FE3C0}
+.pad{position:absolute;left:12px;bottom:12px;display:none;grid-template-columns:repeat(3,50px);gap:6px}
+.pad button{height:44px;border:1px solid rgba(255,255,255,.5);border-radius:8px;background:rgba(10,37,64,.7);color:#fff;font:inherit;font-size:12px;touch-action:none}
+.stage.playing .hud{display:block}.stage.playing .hint,.stage.playing .status{display:none}
+@media (hover:none){.stage.playing .pad{display:grid}}
+.mis,.cmp,.spd,.prm,.mini{position:absolute;display:none;color:#fff;font-size:12.5px;pointer-events:none}
+.mis{left:12px;top:12px;max-width:290px;background:rgba(10,37,64,.88);padding:8px 12px;border-radius:6px;line-height:1.5}
+.mis b{color:#7CC4EE}.mis s{color:#9FE3C0}
+.cmp{left:50%;top:10px;transform:translateX(-50%);background:rgba(10,37,64,.8);padding:3px 14px;border-radius:999px;font-weight:600;letter-spacing:.5px}
+.spd{left:50%;bottom:12px;transform:translateX(-50%);background:rgba(10,37,64,.85);padding:6px 16px;border-radius:8px;font-size:14px;font-weight:600;text-align:center}
+.prm{left:50%;bottom:70px;transform:translateX(-50%);background:rgba(255,255,255,.93);color:#0A2540;padding:6px 16px;border-radius:999px;font-weight:600;transition:opacity .2s}
+.mini{right:12px;bottom:12px;border:2px solid rgba(255,255,255,.85);border-radius:8px;background:#5C656E}
+.stage.playing .mis,.stage.playing .cmp,.stage.playing .spd,.stage.playing .prm,.stage.playing .mini{display:block}
+.load{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);background:rgba(10,37,64,.88);color:#fff;padding:5px 14px;border-radius:999px;font-size:12.5px;display:none;pointer-events:none}
+.chart-box{position:relative;height:270px}
+#section{display:block;width:100%;height:270px}
+
+/* =====================================================================
+   6. RESULTADOS
+   ===================================================================== */
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.tile{background:var(--paper);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px}
+.tile .k{font-size:12px;color:var(--slate-2)}
+.tile .v{font-family:var(--font-head);font-size:1.45rem;font-weight:600;line-height:1.15}
+.tile .u{font-size:12px;color:var(--slate-2)}
+.big-status{border-radius:var(--r-sm);padding:10px 12px;font-weight:600;margin-bottom:14px;border:1px solid transparent}
+.big-status.ok{background:var(--ok-bg);color:#14633F;border-color:#9AD3B7}
+.big-status.warn{background:var(--warn-bg);color:#7A5200;border-color:#EBCB77}
+.big-status.bad{background:var(--bad-bg);color:#8E2314;border-color:#EDA79C}
+.big-status small{display:block;font-weight:400;margin-top:2px}
+.grp h3{font-family:var(--font-head);font-size:.95rem;font-weight:600;margin:14px 0 4px;padding-bottom:3px;border-bottom:1px solid var(--line)}
+.grp dl{margin:0}
+.grp .row{display:flex;justify-content:space-between;gap:12px;padding:3px 0}
+.grp dt{color:var(--slate)}
+.grp dd{margin:0;font-weight:600;text-align:right}
+
+/* =====================================================================
+   7. FUNDAMENTO MATEMÁTICO
+   ===================================================================== */
+.theory{max-width:1680px;margin:0 auto;padding:0 16px 24px}
+.theory .panel{display:grid;gap:10px}
+.theory details{border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 14px;background:var(--paper)}
+.theory summary{cursor:pointer;font-weight:600}
+.eq{font-family:Georgia,"Times New Roman",serif;font-size:15.5px;background:#fff;border-left:3px solid var(--water);padding:6px 12px;margin:8px 0;overflow-x:auto;white-space:nowrap}
+.theory p,.theory li{max-width:90ch}
+footer{max-width:1680px;margin:0 auto;padding:0 16px 28px;color:var(--slate-2);font-size:12.5px}
+
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style>
+</head>
+
+<body>
+
+<!-- =====================================================================
+     CABECERA / TÍTULO
+     ===================================================================== -->
+<header class="hdr">
+  <div class="hdr-in">
+    <div>
+      <h1>Simulador Hidráulico de Arroyos Urbanos - Santa Marta</h1>
+      <p class="sub">Simulador interactivo 3D, Opción 2: dinámica de canales abiertos y mitigación de inundaciones urbanas por arroyos.</p>
+      <!-- EDITAR: nombres de los autores -->
+      <p class="authors">Autores: Nombre Apellido, Nombre Apellido, Nombre Apellido</p>
+    </div>
+    <div class="badges" aria-label="Línea de investigación">
+      <span class="badge">Gestión Integral de Recursos Hídricos en Zonas Costeras</span>
+      <span class="badge">Hidráulica de Canales Abiertos</span>
+    </div>
+  </div>
+</header>
+
+<main class="app">
+
+  <!-- ===================================================================
+       PANEL DE CONTROL (sliders + entradas numéricas con decimales)
+       =================================================================== -->
+  <aside class="panel controls" aria-label="Panel de control">
+    <h2>Parámetros de entrada</h2>
+    <div class="presets" role="group" aria-label="Escenarios de ejemplo">
+      <button class="btn" data-preset="ord" type="button">Evento ordinario</button>
+      <button class="btn" data-preset="dis" type="button">Evento de diseño</button>
+      <button class="btn" data-preset="ext" type="button">Evento extremo</button>
+      <button class="btn" data-preset="gate" type="button">Compuerta casi cerrada</button>
+    </div>
+    <div id="ctl-main"></div>
+
+    <label class="check"><input type="checkbox" id="gate" checked> Compuerta de regulación activa</label>
+
+    <details class="adv" open>
+      <summary>Parámetros avanzados</summary>
+      <div id="ctl-adv"></div>
+      <p class="note">Los valores de los escenarios son ilustrativos. Reemplácelos por datos medidos del arroyo a evaluar. Puede escribir decimales con punto o con coma.</p>
+    </details>
+    <div class="presets" style="margin-top:12px">
+      <button class="btn" id="btnReset" type="button">Restablecer valores</button>
+      <button class="btn" id="btnCsv" type="button">Exportar resultados (CSV)</button>
+    </div>
+  </aside>
+
+  <!-- ===================================================================
+       PANEL CENTRAL: ESCENA 3D, SECCIÓN TRANSVERSAL Y GRÁFICAS
+       =================================================================== -->
+  <section class="center" aria-label="Visualización">
+    <div class="panel">
+      <div class="stage-bar">
+        <h2>Canal rectangular en 3D</h2>
+        <div class="stage-tools">
+          <button class="btn pri" id="btnPlay" type="button">Jugar</button>
+          <button class="btn" data-view="gen" type="button">Vista general</button>
+          <button class="btn" data-view="top" type="button">Planta</button>
+          <button class="btn" data-view="up" type="button">Aguas arriba</button>
+          <button class="btn" data-view="jet" type="button">Compuerta y chorro</button>
+          <button class="btn" id="btnOrbit" type="button">Órbita automática</button>
+          <button class="btn" id="btnRain" type="button">Lluvia: apagada</button>
+          <button class="btn" id="btnTime" type="button">Hora 10:00</button>
+          <button class="btn" id="btnPause" type="button">Pausar animación</button>
+        </div>
+      </div>
+      <div class="stage">
+        <canvas id="scene" tabindex="0" role="img"
+          aria-label="Vista tridimensional del canal con el flujo de agua, la compuerta y el chorro de descarga. Arrastre para rotar, use la rueda para acercar y arrastre la compuerta para cambiar su apertura."></canvas>
+        <div class="status ok" id="stageStatus" aria-live="polite">Estado seguro</div>
+        <div class="tip" id="tip"></div>
+        <div class="load" id="chrLoad">Cargando personaje…</div>
+        <div class="hud" id="hud" aria-live="polite"></div>
+        <div class="mis" id="mis"></div><div class="cmp" id="cmp"></div><div class="spd" id="spd"></div><div class="prm" id="prm"></div>
+        <canvas class="mini" id="mini" width="160" height="120" aria-label="Minimapa"></canvas>
+        <div class="pad" id="pad"><span></span><button data-k="w" aria-label="Avanzar">▲</button><button data-k="jump" aria-label="Saltar">Saltar</button><button data-k="a" aria-label="Izquierda">◀</button><button data-k="s" aria-label="Retroceder">▼</button><button data-k="d" aria-label="Derecha">▶</button></div>
+        <div class="hint">Arrastre: rotar. Rueda: zoom. Clic derecho: desplazar. Arrastre la compuerta naranja para variar h<sub>g</sub>. Pendiente exagerada ×8, tramo comprimido en horizontal.</div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h2>Sección transversal</h2>
+        <canvas id="section" role="img" aria-label="Sección transversal del canal con tirante normal, tirante crítico y borde libre"></canvas>
+      </div>
+      <div class="panel">
+        <h2>Curva de capacidad: caudal frente a tirante</h2>
+        <div class="chart-box"><canvas id="chRating"></canvas></div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h2>Optimización geométrica: A(x) cuadrática</h2>
+        <div class="chart-box"><canvas id="chParab"></canvas></div>
+      </div>
+      <div class="panel">
+        <h2>Trayectoria parabólica del chorro</h2>
+        <div class="chart-box"><canvas id="chTraj"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================
+       PANEL DE RESULTADOS Y MÉTRICAS EN TIEMPO REAL
+       =================================================================== -->
+  <aside class="panel results" aria-label="Resultados">
+    <h2>Resultados en tiempo real</h2>
+    <div class="big-status ok" id="bigStatus" aria-live="polite"></div>
+    <div class="tiles">
+      <div class="tile"><div class="k">Área hidráulica, A</div><div class="v" id="tA">-</div><div class="u">m²</div></div>
+      <div class="tile"><div class="k">Perímetro mojado, P</div><div class="v" id="tP">-</div><div class="u">m</div></div>
+      <div class="tile"><div class="k">Velocidad media, V</div><div class="v" id="tV">-</div><div class="u">m/s</div></div>
+      <div class="tile"><div class="k">Capacidad del canal</div><div class="v" id="tQ">-</div><div class="u">m³/s</div></div>
+    </div>
+    <div class="results-grid" id="groups"></div>
+  </aside>
+</main>
+
+<!-- =====================================================================
+     FUNDAMENTO MATEMÁTICO (para la evaluación académica)
+     ===================================================================== -->
+<section class="theory" aria-label="Fundamento matemático">
+  <div class="panel">
+    <h2>Fundamento matemático del modelo</h2>
+
+    <details>
+      <summary>A. Flujo uniforme: ecuación de Manning y números decimales</summary>
+      <div class="eq">Q = (1/n) · A · R<sup>2/3</sup> · S<sub>0</sub><sup>1/2</sup>,  A = b·y,  P = b + 2y,  R = A/P</div>
+      <p>El tirante normal y<sub>n</sub> no tiene solución algebraica cerrada. Se obtiene por bisección sobre Q(y), que es monótona creciente. El número de Froude Fr = V / √(g·y) clasifica el régimen. El tirante crítico de una sección rectangular es y<sub>c</sub> = (Q² / (g·b²))<sup>1/3</sup>. Todos los cálculos se hacen en doble precisión y solo se redondean con <code>toFixed()</code> al mostrarlos, de modo que no se acumula error de redondeo.</p>
+    </details>
+
+    <details>
+      <summary>B. Ecuaciones lineales: costo de mitigación y pérdida de carga</summary>
+      <div class="eq">Costo(V) = V<sub>esc</sub> · Tarifa<sub>m³</sub> + Cargo<sub>fijo</sub>,  Tarifa<sub>m³</sub> = e<sub>bombeo</sub> · Tarifa<sub>kWh</sub></div>
+      <p>V<sub>esc</sub> = Q<sub>exc</sub> · t es el volumen que el canal no puede conducir durante el pico. Se tomó el cargo fijo como un costo de movilización que se activa solo cuando hay excedente (V<sub>esc</sub> &gt; 0).</p>
+      <div class="eq">h<sub>f,lin</sub> = (32 · ν · L / (g · D<sub>h</sub>²)) · V,  D<sub>h</sub> = 4R</div>
+      <p>Es la relación lineal en V de Hagen-Poiseuille, válida para régimen laminar. En un arroyo urbano el flujo casi siempre es turbulento (Re muy alto), por eso el simulador la muestra junto a la pérdida por Manning, h<sub>f</sub> = (n·V / R<sup>2/3</sup>)² · L, y advierte que la aproximación lineal solo sirve como referencia.</p>
+    </details>
+
+    <details>
+      <summary>C. Ecuaciones cuadráticas: geometría óptima y trayectoria del chorro</summary>
+      <p>Con el perímetro de revestimiento fijo P<sub>m</sub> = b + 2H (material disponible), el área en función del ancho x es una parábola:</p>
+      <div class="eq">A(x) = x · (P<sub>m</sub> − x) / 2 = −x²/2 + (P<sub>m</sub>/2) · x</div>
+      <p>Su vértice da la sección de máxima área: x* = P<sub>m</sub>/2, H* = P<sub>m</sub>/4 y A<sub>máx</sub> = P<sub>m</sub>²/8, es decir b = 2H (sección rectangular de máxima eficiencia hidráulica). Para un área dada A, los anchos posibles salen de x² − P<sub>m</sub>x + 2A = 0, con discriminante P<sub>m</sub>² − 8A ≥ 0.</p>
+      <div class="eq">y(x) = h<sub>0</sub> + tan(θ)·x − g / (2·v<sub>0</sub>²·cos²θ) · x²</div>
+      <p>Con v<sub>0</sub> = Q / A<sub>salida</sub>. El alcance es la raíz positiva de y(x) = 0: x<sub>L</sub> = [tanθ + √(tan²θ + 4·a·h<sub>0</sub>)] / (2a), con a = g / (2·v<sub>0</sub>²·cos²θ).</p>
+    </details>
+
+    <details>
+      <summary>D. Compuerta y supuestos del modelo</summary>
+      <div class="eq">Q = C<sub>d</sub> · b · h<sub>g</sub> · √(2·g·y<sub>1</sub>),  C<sub>d</sub> = 0.60</div>
+      <ul>
+        <li>Canal prismático rectangular, flujo permanente y uniforme en el tramo (la compuerta se trata como control aguas abajo).</li>
+        <li>Si la compuerta controla, el tirante aguas arriba y<sub>1</sub> se despeja de la ecuación de descarga. El remanso se dibuja con un perfil suave de referencia, no con una integración de flujo gradualmente variado.</li>
+        <li>Hay desborde cuando el tirante efectivo supera la altura de los muros H, o de forma equivalente cuando Q<sub>in</sub> supera la capacidad.</li>
+        <li>La velocidad de salida del chorro usa A<sub>salida</sub> = b · min(h<sub>g</sub>, y). No se aplica coeficiente de contracción.</li>
+        <li>Es una herramienta didáctica. No sustituye un modelo 1D/2D calibrado (HEC-RAS, SWMM, IBER) para diseño.</li>
+      </ul>
+    </details>
+  </div>
+</section>
+
+<footer>
+  Simulador Hidráulico de Arroyos Urbanos - Santa Marta. Código autocontenido en un solo archivo: HTML5, CSS3 y JavaScript ES6+. Librerías por CDN: Three.js (escena 3D), Chart.js y Tailwind CSS.
+</footer>
+
+<script>
+/* =====================================================================
+   SIMULADOR HIDRÁULICO DE ARROYOS URBANOS - SANTA MARTA
+   Estructura del script:
+     1. Constantes y estado
+     2. Núcleo matemático (Manning, lineales, cuadráticas)
+     3. Controles reactivos
+     4. Resultados (DOM)
+     5. Gráficas (Chart.js)
+     6. Sección transversal (canvas 2D)
+     7. Escena 3D (canvas con proyección propia)
+     8. Bucle de animación
+   ===================================================================== */
+(() => {
+'use strict';
+
+/* ---------- 1. CONSTANTES Y ESTADO ---------- */
+const G  = 9.81;        // gravedad (m/s²)
+const CD = 0.60;        // coeficiente de descarga de la compuerta
+const NU = 0.9e-6;      // viscosidad cinemática del agua a ~28 °C (m²/s)
+
+const DEFAULTS = {
+  Q:14.5, b:4.0, S0:0.005, n:0.013, hg:1.5,           // entradas principales
+  H:2.0, theta:5, h0:1.0, Lt:100, dur:30,             // avanzadas: geometría y evento
+  eSp:0.35, tkwh:650, fijo:500000,                    // avanzadas: costos
+  gate:true
+};
+const state = { ...DEFAULTS };
+
+const CONTROLS = [
+  { k:'Q',  g:'main', name:'Caudal pico de entrada',   label:'Caudal pico de entrada, Q<sub>in</sub>', unit:'m³/s', min:0.1,   max:60,    step:0.05,   dec:2 },
+  { k:'b',  g:'main', name:'Ancho base del canal',     label:'Ancho base del canal, b',                unit:'m',    min:0.5,   max:15,    step:0.05,   dec:2 },
+  { k:'S0', g:'main', name:'Pendiente longitudinal',   label:'Pendiente longitudinal, S<sub>0</sub>',  unit:'m/m',  min:0.0005,max:0.05,  step:0.0001, dec:4 },
+  { k:'n',  g:'main', name:'Coeficiente de Manning',   label:'Rugosidad de Manning, n',                unit:'s/m<sup>1/3</sup>', min:0.010, max:0.060, step:0.001, dec:3 },
+  { k:'hg', g:'main', name:'Apertura de compuerta',    label:'Apertura de compuerta, h<sub>g</sub>',   unit:'m',    min:0.05,  max:2.0,   step:0.01,   dec:2 },
+  { k:'H',  g:'adv',  name:'Altura de los muros',      label:'Altura de los muros, H',                 unit:'m',    min:0.5,   max:5,     step:0.05,   dec:2 },
+  { k:'theta',g:'adv',name:'Ángulo de salida',         label:'Ángulo de salida del chorro, θ',         unit:'°',    min:-30,   max:45,    step:0.5,    dec:1 },
+  { k:'h0', g:'adv',  name:'Altura de salida',         label:'Altura de salida, h<sub>0</sub>',        unit:'m',    min:0.1,   max:3,     step:0.05,   dec:2 },
+  { k:'Lt', g:'adv',  name:'Longitud del tramo',       label:'Longitud del tramo, L',                  unit:'m',    min:10,    max:500,   step:5,      dec:0 },
+  { k:'dur',g:'adv',  name:'Duración del pico',        label:'Duración del pico, t',                   unit:'min',  min:5,     max:180,   step:5,      dec:0 },
+  { k:'eSp',g:'adv',  name:'Energía específica de bombeo', label:'Energía de bombeo, e',               unit:'kWh/m³', min:0.05, max:1.5,  step:0.01,   dec:2 },
+  { k:'tkwh',g:'adv', name:'Tarifa de energía',        label:'Tarifa de energía',                      unit:'COP/kWh', min:200, max:1500,  step:10,     dec:0 },
+  { k:'fijo',g:'adv', name:'Cargo fijo',               label:'Cargo fijo de movilización',             unit:'COP',  min:0,     max:5000000,step:50000, dec:0 }
+];
+
+const PRESETS = {
+  ord:  { Q:6.5,  b:4.0, S0:0.005, n:0.013, hg:2.0, gate:true },
+  dis:  { Q:14.5, b:4.0, S0:0.005, n:0.013, hg:1.5, gate:true },
+  ext:  { Q:26.0, b:4.0, S0:0.005, n:0.013, hg:2.0, gate:true },
+  gate: { Q:14.5, b:4.0, S0:0.005, n:0.013, hg:0.7, gate:true }
+};
+
+/* ---------- Utilidades numéricas ---------- */
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+// Redondeo decimal limpio (evita 0.1+0.2 = 0.30000000000000004 en los controles)
+const round = (v, d) => { const f = Math.pow(10, d); return Math.round((v + Number.EPSILON) * f) / f; };
+const parseNum = v => parseFloat(String(v).trim().replace(',', '.'));
+const fmt = (v, d) => Number.isFinite(v) ? v.toFixed(d) : '-';
+const COP = new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 });
+
+/* =====================================================================
+   2. NÚCLEO MATEMÁTICO
+   ===================================================================== */
+
+/* ---- A. Manning para canal rectangular --------------------------------
+   Q = (1/n) · A · R^(2/3) · S0^(1/2)
+   A = b·y (área mojada), P = b + 2y (perímetro mojado), R = A/P.
+   Es la relación que acopla geometría, rugosidad y pendiente con el caudal. */
+function manningQ(y, b, n, S) {
+  if (y <= 0) return 0;
+  const A = b * y, P = b + 2 * y, R = A / P;
+  return (1 / n) * A * Math.pow(R, 2 / 3) * Math.sqrt(S);
+}
+
+/* Tirante normal: se resuelve Q(y) = Qin por bisección. Q(y) es estrictamente
+   creciente, por lo que el método siempre converge. */
+function normalDepth(Q, b, n, S) {
+  let lo = 1e-6, hi = 1;
+  while (manningQ(hi, b, n, S) < Q && hi < 1e3) hi *= 2;
+  for (let i = 0; i < 100; i++) {
+    const mid = 0.5 * (lo + hi);
+    if (manningQ(mid, b, n, S) < Q) lo = mid; else hi = mid;
+  }
+  return 0.5 * (lo + hi);
+}
+
+/* ---- Cálculo completo del sistema ------------------------------------ */
+function solve(s) {
+  const r = {};
+  const hg = Math.min(s.hg, s.H);
+
+  // Flujo uniforme (Manning)
+  r.yn  = normalDepth(s.Q, s.b, s.n, s.S0);
+  r.An  = s.b * r.yn;
+  r.Pn  = s.b + 2 * r.yn;
+  r.Rn  = r.An / r.Pn;
+  r.Vn  = s.Q / r.An;
+  r.Qchk = manningQ(r.yn, s.b, s.n, s.S0);
+  r.Fr  = r.Vn / Math.sqrt(G * r.yn);
+  r.yc  = Math.cbrt((s.Q * s.Q) / (G * s.b * s.b));   // tirante crítico rectangular
+  r.regime = r.Fr > 1.02 ? 'Supercrítico' : (r.Fr < 0.98 ? 'Subcrítico' : 'Crítico');
+
+  // Capacidad: muro lleno y compuerta
+  r.QmanFull  = manningQ(s.H, s.b, s.n, s.S0);
+  r.QgateFull = CD * s.b * hg * Math.sqrt(2 * G * s.H);     // Q = Cd·b·hg·√(2g·H)
+  r.Qcap = s.gate ? Math.min(r.QmanFull, r.QgateFull) : r.QmanFull;
+
+  // Tirante aguas arriba si controla la compuerta: y1 = (Q/(Cd·b·hg))² / (2g)
+  r.y1 = s.gate ? Math.pow(s.Q / (CD * s.b * hg), 2) / (2 * G) : 0;
+  r.gateCtl = s.gate && r.y1 > r.yn;
+  r.yEff = r.gateCtl ? r.y1 : r.yn;
+
+  // Desborde
+  r.freeboard = s.H - r.yEff;
+  r.ratio = r.yEff / s.H;
+  r.Qexc = Math.max(0, s.Q - r.Qcap);
+  r.dFlood = Math.max(0, r.yEff - s.H);
+  r.overflow = r.Qexc > 0;
+
+  /* ---- B. ECUACIONES LINEALES -----------------------------------------
+     Costo(V) = V_esc · Tarifa_m3 + Cargo_fijo
+     V_esc = Q_exc · t  (volumen que no cabe en el canal durante el pico)
+     Tarifa_m3 = energía específica de bombeo (kWh/m³) × tarifa (COP/kWh) */
+  r.Vesc  = r.Qexc * s.dur * 60;
+  r.tarM3 = s.eSp * s.tkwh;
+  r.cost  = r.Vesc * r.tarM3 + (r.Vesc > 0 ? s.fijo : 0);
+
+  /* Pérdida de carga lineal en V (Hagen-Poiseuille, régimen laminar):
+        hf = [32·ν·L / (g·Dh²)] · V,   Dh = 4R
+     Se compara con la pérdida turbulenta de Manning: hf = (n·V/R^(2/3))² · L */
+  r.Dh = 4 * r.Rn;
+  r.Re = r.Vn * r.Dh / NU;
+  r.hfLin = 32 * NU * s.Lt * r.Vn / (G * r.Dh * r.Dh);
+  r.Sf = Math.pow(s.n * r.Vn / Math.pow(r.Rn, 2 / 3), 2);
+  r.hfMan = r.Sf * s.Lt;
+
+  /* ---- C.1 GEOMETRÍA ÓPTIMA (cuadrática) --------------------------------
+     Perímetro de revestimiento fijo Pm = b + 2H.  Con x = ancho:
+        A(x) = x·(Pm − x)/2        (parábola cóncava)
+     Vértice: x* = Pm/2, H* = Pm/4, Amax = Pm²/8  →  b = 2H            */
+  r.Pm = s.b + 2 * s.H;
+  r.bOpt = r.Pm / 2;
+  r.HOpt = r.Pm / 4;
+  r.AOpt = r.Pm * r.Pm / 8;
+  r.Afull = s.b * s.H;
+  r.QoptFull = manningQ(r.HOpt, r.bOpt, s.n, s.S0);
+  r.dQopt = (r.QoptFull / r.QmanFull - 1) * 100;
+  // Raíces de x² − Pm·x + 2A = 0 para el área llena actual (fórmula cuadrática)
+  r.disc = r.Pm * r.Pm - 8 * r.Afull;
+  const sq = Math.sqrt(Math.max(0, r.disc));
+  r.x1 = (r.Pm - sq) / 2;
+  r.x2 = (r.Pm + sq) / 2;
+
+  /* ---- C.2 CHORRO PARABÓLICO ------------------------------------------
+     y(x) = h0 + tanθ·x − g/(2·v0²·cos²θ)·x²,   v0 = Q / A_salida        */
+  r.Aexit = s.gate ? s.b * Math.min(hg, r.yEff) : r.An;
+  r.v0 = s.Q / r.Aexit;
+  const th = s.theta * Math.PI / 180, tn = Math.tan(th), cs = Math.cos(th);
+  r.a = G / (2 * r.v0 * r.v0 * cs * cs);
+  r.xL = (tn + Math.sqrt(tn * tn + 4 * r.a * s.h0)) / (2 * r.a);   // alcance (raíz positiva)
+  r.xApex = tn > 0 ? tn / (2 * r.a) : 0;
+  r.yApex = s.h0 + (tn > 0 ? tn * tn / (4 * r.a) : 0);
+  r.jetY = x => s.h0 + tn * x - r.a * x * x;
+  /* Remanso aguas arriba de la compuerta: flujo gradualmente variado (perfil M1), método de pasos estándar.
+       E = y + Q²/(2g·b²·y²);   E(aguas arriba) = E(aguas abajo) − (S0 − Sf_medio)·Δx   */
+  const prof = [[0, r.y1]];
+  r.Lbw = 0;
+  if (r.gateCtl && r.yn > r.yc) {
+    const Eq = y => y + s.Q * s.Q / (2 * G * s.b * s.b * y * y);
+    const Sf = y => { const A = s.b * y; return Math.pow(s.n * (s.Q / A) / Math.pow(A / (s.b + 2 * y), 2 / 3), 2); };
+    const NS = 240, dx = s.Lt / NS;
+    let y = r.y1;
+    for (let i = 1; i <= NS && y - r.yn > 0.003; i++) {
+      let y2 = y;
+      for (let it = 0; it < 3; it++) {
+        const Et = Eq(y) - (s.S0 - 0.5 * (Sf(y) + Sf(y2))) * dx;
+        let lo = r.yc, hi = y;                                   // rama subcrítica: E crece con y
+        for (let k = 0; k < 40; k++) { const m = 0.5 * (lo + hi); if (Eq(m) < Et) lo = m; else hi = m; }
+        y2 = 0.5 * (lo + hi);
+      }
+      y = Math.max(y2, r.yn); prof.push([i * dx, y]); r.Lbw = i * dx;
+    }
+  }
+  // Tirante en la escena: x visual 0..LC se mapea a la distancia real 0..Lt aguas arriba de la compuerta
+  r.depthAt = x => {
+    if (!r.gateCtl) return r.yn;
+    if (prof.length < 3) return r.yn + (r.y1 - r.yn) * Math.pow(clamp(x / LC, 0, 1), 4);   // supercrítico: perfil ilustrativo
+    const d = clamp((LC - x) / LC * s.Lt, 0, s.Lt), dx = prof[1][0];
+    if (d >= prof[prof.length - 1][0]) return r.yn;
+    const i = Math.floor(d / dx), f = clamp((d - prof[i][0]) / dx, 0, 1);
+    return prof[i][1] + (prof[i + 1][1] - prof[i][1]) * f;
+  };
+  return r;
+}
+
+/* =====================================================================
+   3. CONTROLES REACTIVOS
+   ===================================================================== */
+const refs = {};
+let R = null;
+let pending = false;
+let dirty = true;
+
+function buildControl(def, host) {
+  const wrap = document.createElement('div');
+  wrap.className = 'ctl';
+  wrap.innerHTML =
+    `<div class="ctl-head"><label for="n_${def.k}">${def.label}</label><span class="unit">${def.unit}</span></div>
+     <div class="ctl-row">
+       <input type="range" id="r_${def.k}" min="${def.min}" max="${def.max}" step="${def.step}" value="${state[def.k]}" aria-label="${def.name}">
+       <input type="text" id="n_${def.k}" inputmode="decimal" autocomplete="off" value="${state[def.k].toFixed(def.dec)}">
+     </div>`;
+  host.appendChild(wrap);
+  const rng = wrap.querySelector('input[type=range]');
+  const num = wrap.querySelector('input[type=text]');
+  refs[def.k] = { rng, num, wrap, def };
+
+  rng.addEventListener('input', () => setValue(def.k, parseFloat(rng.value), 'r'));
+  num.addEventListener('input', () => {                    // actualización en vivo si el valor ya es válido
+    const v = parseNum(num.value);
+    if (Number.isFinite(v) && v >= def.min && v <= def.max) setValue(def.k, v, 'n');
+  });
+  num.addEventListener('change', () => {                   // al salir del campo se corrige o se revierte
+    const v = parseNum(num.value);
+    if (Number.isFinite(v)) setValue(def.k, v); else num.value = state[def.k].toFixed(def.dec);
+  });
+}
+
+function setValue(k, v, from) {
+  const { rng, num, def } = refs[k];
+  v = round(clamp(v, +rng.min, +rng.max), def.dec);
+  state[k] = v;
+  if (from !== 'r') rng.value = v;
+  if (from !== 'n') num.value = v.toFixed(def.dec);
+  if (k === 'H') {                                         // la compuerta no puede abrir más que la altura del muro
+    refs.hg.rng.max = state.H;
+    if (state.hg > state.H) setValue('hg', state.H);
+  }
+  schedule();
+}
+
+function applyAll(values) {
+  Object.keys(values).forEach(k => {
+    if (k === 'gate') { state.gate = values.gate; document.getElementById('gate').checked = values.gate; }
+    else setValue(k, values[k]);
+  });
+  schedule();
+}
+
+// Recalcular una sola vez por fotograma aunque lleguen muchos eventos 'input'
+function schedule() {
+  if (pending) return;
+  pending = true;
+  requestAnimationFrame(() => { pending = false; update(); });
+}
+
+CONTROLS.forEach(def => buildControl(def, document.getElementById(def.g === 'main' ? 'ctl-main' : 'ctl-adv')));
+refs.hg.rng.max = state.H;
+
+document.getElementById('gate').addEventListener('change', e => {
+  state.gate = e.target.checked;
+  refs.hg.wrap.classList.toggle('off', !state.gate);
+  schedule();
+});
+document.querySelectorAll('[data-preset]').forEach(b =>
+  b.addEventListener('click', () => applyAll(PRESETS[b.dataset.preset])));
+document.getElementById('btnReset').addEventListener('click', () => applyAll(DEFAULTS));
+
+/* =====================================================================
+   4. RESULTADOS (DOM)
+   ===================================================================== */
+const GROUPS = [
+  ['Sección y flujo (Manning)', [
+    ['yn','Tirante normal, y<sub>n</sub>'], ['yc','Tirante crítico, y<sub>c</sub>'], ['Fr','Número de Froude, Fr'],
+    ['reg','Régimen'], ['Rh','Radio hidráulico, R'], ['Qm','Q de Manning en y<sub>n</sub>']]],
+  ['Compuerta y desborde', [
+    ['yEff','Tirante efectivo aguas arriba'], ['fb','Borde libre'], ['Qfull','Capacidad de los muros'],
+    ['Qgate','Capacidad de la compuerta'], ['Lbw','Longitud del remanso'], ['Qexc','Caudal excedente'], ['Vesc','Volumen de escorrentía']]],
+  ['Costo lineal de mitigación', [
+    ['tar','Tarifa por volumen'], ['cost','Costo total']]],
+  ['Pérdida de carga en el tramo', [
+    ['Re','Número de Reynolds'], ['hfm','h<sub>f</sub> turbulenta (Manning)'], ['hfl','h<sub>f</sub> lineal (laminar)']]],
+  ['Geometría óptima (cuadrática)', [
+    ['Pm','Perímetro de revestimiento, P<sub>m</sub>'], ['bo','Ancho óptimo, b*'], ['Ho','Altura óptima, H*'],
+    ['Ao','Área máxima, A<sub>máx</sub>'], ['dQ','Cambio de capacidad'], ['rt','Anchos con el mismo área']]],
+  ['Chorro de descarga', [
+    ['v0','Velocidad de salida, v<sub>0</sub>'], ['xL','Alcance horizontal'], ['yA','Altura máxima']]]
+];
+const grpHost = document.getElementById('groups');
+GROUPS.forEach(([title, rows]) => {
+  const d = document.createElement('div');
+  d.className = 'grp';
+  d.innerHTML = `<h3>${title}</h3><dl>` +
+    rows.map(([id, lab]) => `<div class="row"><dt>${lab}</dt><dd id="o_${id}">-</dd></div>`).join('') + '</dl>';
+  grpHost.appendChild(d);
+});
+const $ = id => document.getElementById(id);
+const setO = (id, txt) => { $('o_' + id).textContent = txt; };
+
+function renderResults(r) {
+  const s = state;
+  $('tA').textContent = fmt(r.An, 2);
+  $('tP').textContent = fmt(r.Pn, 2);
+  $('tV').textContent = fmt(r.Vn, 2);
+  $('tQ').textContent = fmt(r.Qcap, 2);
+
+  // Indicador de alerta de desborde
+  let cls, head, detail;
+  if (r.overflow) {
+    cls = 'bad'; head = 'Alerta de inundación';
+    detail = `El agua supera los muros en ${fmt(r.dFlood, 2)} m. Caudal excedente: ${fmt(r.Qexc, 2)} m³/s.`;
+  } else if (r.ratio > 0.8) {
+    cls = 'warn'; head = 'Precaución: borde libre reducido';
+    detail = `Borde libre de ${fmt(r.freeboard, 2)} m (${fmt((1 - r.ratio) * 100, 0)} % de la altura del muro).`;
+  } else {
+    cls = 'ok'; head = 'Estado seguro';
+    detail = `Borde libre de ${fmt(r.freeboard, 2)} m. El canal conduce el caudal sin desbordar.`;
+  }
+  const big = $('bigStatus');
+  big.className = 'big-status ' + cls;
+  big.innerHTML = `${head}<small>${detail}</small>`;
+  const st = $('stageStatus');
+  st.className = 'status ' + cls;
+  st.textContent = head;
+
+  setO('yn', fmt(r.yn, 3) + ' m');
+  setO('yc', fmt(r.yc, 3) + ' m');
+  setO('Fr', fmt(r.Fr, 3));
+  setO('reg', r.regime);
+  setO('Rh', fmt(r.Rn, 3) + ' m');
+  setO('Qm', fmt(r.Qchk, 2) + ' m³/s');
+
+  setO('yEff', fmt(r.yEff, 3) + ' m' + (r.gateCtl ? ' (remanso)' : ''));
+  setO('fb', fmt(r.freeboard, 3) + ' m');
+  setO('Qfull', fmt(r.QmanFull, 2) + ' m³/s');
+  setO('Qgate', s.gate ? fmt(r.QgateFull, 2) + ' m³/s' : 'sin compuerta');
+  setO('Qexc', fmt(r.Qexc, 2) + ' m³/s');
+  setO('Vesc', fmt(r.Vesc, 0) + ' m³');
+  setO('Lbw', r.gateCtl ? (r.yn > r.yc ? (r.Lbw >= state.Lt ? '≥ ' : '') + fmt(r.Lbw, 0) + ' m' : 'resalto (no modelado)') : '-');
+
+  setO('tar', COP.format(r.tarM3) + '/m³');
+  setO('cost', COP.format(r.cost));
+
+  setO('Re', r.Re.toExponential(2));
+  setO('hfm', fmt(r.hfMan, 3) + ' m');
+  setO('hfl', r.hfLin < 0.0005 ? '< 0.001 m' : fmt(r.hfLin, 4) + ' m');
+
+  setO('Pm', fmt(r.Pm, 2) + ' m');
+  setO('bo', fmt(r.bOpt, 2) + ' m');
+  setO('Ho', fmt(r.HOpt, 2) + ' m');
+  setO('Ao', fmt(r.AOpt, 2) + ' m²');
+  setO('dQ', (r.dQopt >= 0 ? '+' : '') + fmt(r.dQopt, 1) + ' %');
+  setO('rt', `${fmt(r.x1, 2)} y ${fmt(r.x2, 2)} m`);
+
+  setO('v0', fmt(r.v0, 2) + ' m/s');
+  setO('xL', fmt(r.xL, 2) + ' m');
+  setO('yA', fmt(r.yApex, 2) + ' m');
+}
+
+/* =====================================================================
+   5. GRÁFICAS (Chart.js)
+   ===================================================================== */
+const charts = {};
+const HAS_CHART = typeof Chart !== 'undefined';
+if (HAS_CHART) {
+  Chart.defaults.font.family = '"IBM Plex Sans", system-ui, sans-serif';
+  Chart.defaults.font.size = 12;
+  Chart.defaults.color = '#3A4A5A';
+}
+const axis = (title) => ({ title:{ display:true, text:title }, grid:{ color:'#DDE5EC' } });
+function mkChart(id, datasets, xt, yt) {
+  if (!HAS_CHART) return null;
+  return new Chart($(id), {
+    type: 'scatter',
+    data: { datasets },
+    options: {
+      responsive:true, maintainAspectRatio:false, animation:false,
+      parsing:false, interaction:{ mode:'nearest', intersect:false },
+      scales:{ x:{ type:'linear', ...axis(xt) }, y:{ type:'linear', beginAtZero:true, ...axis(yt) } },
+      plugins:{ legend:{ position:'bottom', labels:{ boxWidth:14, usePointStyle:true } } }
+    }
+  });
+}
+const line = (label, color, extra = {}) => ({ label, data:[], showLine:true, borderColor:color, backgroundColor:color, borderWidth:2.5, pointRadius:0, tension:0, ...extra });
+const dot  = (label, color, extra = {}) => ({ label, data:[], showLine:false, borderColor:color, backgroundColor:color, pointRadius:6, pointHoverRadius:8, ...extra });
+
+charts.rating = mkChart('chRating', [
+  line('Manning, Q(y)', '#1F86C8'),
+  line('Compuerta, Q(y)', '#0E8F8C', { borderDash:[6,4] }),
+  line('Muro H', '#C63A28', { borderDash:[2,4], borderWidth:2 }),
+  dot('Punto de operación', '#B97A00')
+], 'Caudal Q (m³/s)', 'Tirante y (m)');
+
+charts.parab = mkChart('chParab', [
+  line('A(x) = x(P − x)/2', '#12426B'),
+  dot('Sección actual', '#B97A00'),
+  dot('Vértice óptimo (b = 2H)', '#2A9466', { pointStyle:'rectRot', pointRadius:8 })
+], 'Ancho x (m)', 'Área A (m²)');
+
+charts.traj = mkChart('chTraj', [
+  line('y(x) del chorro', '#1F86C8'),
+  line('Solera del disipador', '#5B6B7B', { borderWidth:1.5 }),
+  dot('Altura máxima', '#B97A00'),
+  dot('Punto de caída', '#C63A28')
+], 'Distancia horizontal x (m)', 'Altura y (m)');
+
+function renderCharts(r) {
+  if (!HAS_CHART) return;
+  const s = state, N = 48;
+
+  // Curva de capacidad Q(y) y curva de la compuerta
+  const yMax = Math.max(1.35 * s.H, 1.15 * r.yEff);
+  const mq = [], gq = [];
+  for (let i = 0; i <= N; i++) {
+    const y = 0.02 + (yMax - 0.02) * i / N;
+    mq.push({ x: manningQ(y, s.b, s.n, s.S0), y });
+    gq.push({ x: CD * s.b * Math.min(s.hg, s.H) * Math.sqrt(2 * G * y), y });
+  }
+  const qMax = Math.max(mq[N].x, s.Q * 1.1);
+  charts.rating.data.datasets[0].data = mq;
+  charts.rating.data.datasets[1].data = s.gate ? gq : [];
+  charts.rating.data.datasets[2].data = [{ x:0, y:s.H }, { x:qMax, y:s.H }];
+  charts.rating.data.datasets[3].data = [{ x:s.Q, y:r.yEff }];
+  charts.rating.options.scales.x.max = qMax;
+  charts.rating.options.scales.y.max = yMax;
+  charts.rating.update('none');
+
+  // Parábola A(x) con vértice
+  const pp = [];
+  for (let i = 0; i <= N; i++) { const x = r.Pm * i / N; pp.push({ x, y: x * (r.Pm - x) / 2 }); }
+  charts.parab.data.datasets[0].data = pp;
+  charts.parab.data.datasets[1].data = [{ x:s.b, y:r.Afull }];
+  charts.parab.data.datasets[2].data = [{ x:r.bOpt, y:r.AOpt }];
+  charts.parab.update('none');
+
+  // Trayectoria del chorro
+  const tp = [];
+  for (let i = 0; i <= N; i++) { const x = r.xL * i / N; tp.push({ x, y: Math.max(0, r.jetY(x)) }); }
+  charts.traj.data.datasets[0].data = tp;
+  charts.traj.data.datasets[1].data = [{ x:0, y:0 }, { x:r.xL * 1.08, y:0 }];
+  charts.traj.data.datasets[2].data = [{ x:r.xApex, y:r.yApex }];
+  charts.traj.data.datasets[3].data = [{ x:r.xL, y:0 }];
+  charts.traj.update('none');
+}
+
+/* =====================================================================
+   6. SECCIÓN TRANSVERSAL (canvas 2D)
+   ===================================================================== */
+function fitCanvas(c) {
+  const dpr = window.devicePixelRatio || 1;
+  const W = c.clientWidth, H = c.clientHeight;
+  if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) {
+    c.width = Math.round(W * dpr); c.height = Math.round(H * dpr);
+  }
+  const x = c.getContext('2d');
+  x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return [W, H, x];
+}
+const FONT = "500 12px 'IBM Plex Sans', system-ui, sans-serif";
+
+function drawSection(r) {
+  const [W, Hh, c] = fitCanvas($('section'));
+  c.clearRect(0, 0, W, Hh);
+  const s = state;
+  const above = Math.max(0.9, r.dFlood + 0.5);                  // metros dibujados sobre el nivel del terreno
+  const k = Math.min((W - 110) / (s.b + 5), (Hh - 56) / (s.H + above));
+  const cx = W / 2;
+  const gy = 18 + above * k;                                    // y del terreno
+  const x0 = cx - s.b * k / 2, x1 = cx + s.b * k / 2;
+  const floorY = gy + s.H * k;
+
+  // Terreno
+  c.fillStyle = '#C9D2D9';
+  c.fillRect(0, gy, x0, Hh - gy); c.fillRect(x1, gy, W - x1, Hh - gy);
+  c.fillStyle = '#8E9AA5';
+  c.fillRect(0, floorY, W, Hh - floorY);
+  c.fillRect(x0 - 8, gy, 8, floorY - gy + 0); c.fillRect(x1, gy, 8, floorY - gy);
+
+  // Agua dentro del canal
+  const wy = Math.min(r.yEff, s.H);
+  c.fillStyle = 'rgba(31,134,200,.85)';
+  c.fillRect(x0, floorY - wy * k, s.b * k, wy * k);
+  // Agua sobre el terreno (inundación)
+  if (r.dFlood > 0) {
+    const fw = Math.min(70, 28 + r.dFlood * 60);
+    c.fillStyle = 'rgba(31,134,200,.55)';
+    c.fillRect(x0 - fw, gy - r.dFlood * k, s.b * k + 2 * fw, r.dFlood * k);
+  }
+  // Superficie libre
+  const surfY = floorY - r.yEff * k;
+  c.strokeStyle = '#0A2540'; c.lineWidth = 2;
+  c.beginPath(); c.moveTo(x0 - 3, surfY); c.lineTo(x1 + 3, surfY); c.stroke();
+
+  // Línea del terreno / muros
+  c.strokeStyle = '#3A4A5A'; c.lineWidth = 2.5;
+  c.beginPath(); c.moveTo(0, gy); c.lineTo(x0, gy); c.lineTo(x0, floorY); c.lineTo(x1, floorY); c.lineTo(x1, gy); c.lineTo(W, gy); c.stroke();
+
+  // Tirante crítico (línea punteada)
+  const ycY = floorY - r.yc * k;
+  c.setLineDash([5, 4]); c.strokeStyle = '#0E8F8C'; c.lineWidth = 1.5;
+  c.beginPath(); c.moveTo(x0, ycY); c.lineTo(x1, ycY); c.stroke(); c.setLineDash([]);
+
+  // Cotas
+  c.font = FONT; c.textBaseline = 'middle'; c.fillStyle = '#0A2540';
+  c.textAlign = 'center';
+  c.fillText(`b = ${fmt(s.b, 2)} m`, cx, floorY + 14);
+  c.textAlign = 'left';
+  c.fillText(`y = ${fmt(r.yEff, 2)} m`, x1 + 14, (surfY + floorY) / 2);
+  c.fillText(`H = ${fmt(s.H, 2)} m`, x1 + 14, gy + 12);
+  c.fillStyle = '#0E8F8C';
+  c.fillText(`y_c = ${fmt(r.yc, 2)} m`, x0 + 6, ycY - 8);
+  c.fillStyle = r.overflow ? '#C63A28' : '#14633F';
+  c.textAlign = 'right';
+  c.fillText(r.overflow ? `Desborde ${fmt(r.dFlood, 2)} m` : `Borde libre ${fmt(r.freeboard, 2)} m`, x0 - 14, gy - 10);
+  c.fillStyle = '#3A4A5A';
+  c.fillText(`A = ${fmt(r.An, 2)} m²   P = ${fmt(r.Pn, 2)} m`, W - 10, Hh - 12);
+}
+
+/* =====================================================================
+   7. ESCENA 3D REALISTA (Three.js, WebGL)
+   Unidades de escena = metros. Eje X: aguas abajo; Y: vertical; Z: transversal.
+   Interacción: órbita/zoom/desplazamiento, vistas guiadas, cursor informativo
+   sobre el agua y compuerta arrastrable (cambia h_g en vivo).
+   ===================================================================== */
+const cv = $('scene'), tip = $('tip');
+const LC = 22, LD = 10, LT = LC + LD, GW = 12, EXAG = 8, XC = LT / 2;   // tramo de aguas arriba, disipador, ancho de calle
+const HAS3D = typeof THREE !== 'undefined' && !!THREE.OrbitControls;
+const VIEWS = {
+  gen: { p:[-4, 13, 27],        t:[0, -1, 0] },
+  top: { p:[0, 46, 0.1],        t:[0, 0, 0] },
+  up:  { p:[-XC - 11, 4.5, 8],  t:[-4, -1, 0] },
+  jet: { p:[LC - XC + 9, 4, 10], t:[LC - XC + 2, -1.5, 0] }
+};
+let T = 0, renderer, scene3, camera, controls, dyn, world, tween = null, drag = null;
+const MAT = {}, G3 = {};
+
+const canvasTex = (w, h, draw, wrap = true, srgb = true) => {
+  const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  if (wrap) t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 4; t.encoding = srgb ? THREE.sRGBEncoding : THREE.LinearEncoding; return t;
+};
+const speckle = (x, w, h, n, cols) => { for (let i = 0; i < n; i++) { x.fillStyle = cols[i % cols.length]; x.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 2, 1 + Math.random() * 2); } };
+const streaks = (base, n, a) => canvasTex(256, 256, (x, w, h) => {
+  x.fillStyle = base; x.fillRect(0, 0, w, h);
+  for (let i = 0; i < n; i++) {                                // vetas alargadas en el sentido del flujo
+    const y = Math.random() * h, l = 20 + Math.random() * 80, px = Math.random() * w;
+    x.strokeStyle = `rgba(255,255,255,${a * (0.3 + Math.random())})`; x.lineWidth = 1 + Math.random() * 2.2;
+    x.beginPath(); x.moveTo(px, y); x.lineTo(px + l, y + (Math.random() - .5) * 4); x.stroke();
+    x.moveTo(px - w, y); x.lineTo(px - w + l, y);
+  }
+});
+
+function init3D() {
+  renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputEncoding = THREE.sRGBEncoding; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+  scene3 = new THREE.Scene();
+  scene3.background = canvasTex(2, 256, (x, w, h) => { const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#8DBCE0'); g.addColorStop(1, '#E4EFF7'); x.fillStyle = g; x.fillRect(0, 0, w, h); }, false);
+  G3.skyTex = scene3.background; scene3.fog = new THREE.Fog(0xD9E7F1, 60, 200);
+  camera = new THREE.PerspectiveCamera(42, 1, 0.1, 300);
+  G3.hemi = new THREE.HemisphereLight(0xffffff, 0x6B7A88, 0.85); scene3.add(G3.hemi);
+  const sun = new THREE.DirectionalLight(0xFFF3DC, 0.95);
+  sun.position.set(-14, 26, 14); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0006;
+  Object.assign(sun.shadow.camera, { left:-28, right:28, top:28, bottom:-28, near:1, far:90 });
+  scene3.add(sun); G3.sun = sun;
+
+  // Materiales procedurales (texturas generadas en canvas: no requieren imágenes externas)
+  const conc = canvasTex(256, 256, (x, w, h) => { x.fillStyle = '#A9B2BA'; x.fillRect(0, 0, w, h); speckle(x, w, h, 2600, ['#8C969F', '#BBC3CA', '#7D8791']); x.strokeStyle = 'rgba(40,50,60,.35)'; x.strokeRect(0, 0, w, h); });
+  const asph = canvasTex(256, 256, (x, w, h) => { x.fillStyle = '#5C656E'; x.fillRect(0, 0, w, h); speckle(x, w, h, 3200, ['#4A535C', '#707A84', '#424A52']); });
+  const wins = canvasTex(128, 128, (x, w, h) => { x.fillStyle = '#D3DBE1'; x.fillRect(0, 0, w, h); for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { x.fillStyle = (i * j) % 3 ? '#3F5A73' : '#E9C46A'; x.fillRect(10 + i * 30, 10 + j * 30, 18, 20); } }, false);
+  MAT.conc  = new THREE.MeshStandardMaterial({ map: conc, roughness: .9 });
+  MAT.asph  = new THREE.MeshStandardMaterial({ map: asph, roughness: .95 });
+  MAT.floor = new THREE.MeshStandardMaterial({ map: conc, color: 0x8FA0AE, roughness: .8 });
+  MAT.waterTex = streaks('#2F8FD3', 160, .26);
+  MAT.waterNrm = (() => {                                        // mapa de normales procedural (ondas superpuestas)
+    const n = 128, hh = new Float32Array(n * n);
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const u = x / n * 6.2832, v = y / n * 6.2832; hh[y * n + x] = Math.sin(u * 3 + Math.sin(v * 2)) + .6 * Math.sin(v * 4 + u) + .3 * Math.sin(u * 7 - v * 5); }
+    return canvasTex(n, n, c => {
+      const im = c.createImageData(n, n);
+      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+        const dx = hh[y * n + (x + 1) % n] - hh[y * n + (x + n - 1) % n], dy = hh[((y + 1) % n) * n + x] - hh[((y + n - 1) % n) * n + x], l = Math.hypot(dx * .5, dy * .5, 1), i = 4 * (y * n + x);
+        im.data[i] = (-dx * .5 / l * .5 + .5) * 255; im.data[i + 1] = (-dy * .5 / l * .5 + .5) * 255; im.data[i + 2] = (1 / l * .5 + .5) * 255; im.data[i + 3] = 255;
+      }
+      c.putImageData(im, 0, 0);
+    }, true, false);
+  })();
+  MAT.foamTex  = streaks('#9ED4F3', 220, .55);
+  MAT.water = new THREE.MeshStandardMaterial({ map: MAT.waterTex, normalMap: MAT.waterNrm, normalScale: new THREE.Vector2(.5, .5), transparent: true, opacity: .88, roughness: .08, metalness: .25, vertexColors: true });   // color por profundidad
+  MAT.flood = new THREE.MeshStandardMaterial({ map: MAT.waterTex, color: 0x4AA3D8, transparent: true, opacity: .72, roughness: .12 });
+  MAT.jet   = new THREE.MeshStandardMaterial({ map: MAT.foamTex, transparent: true, opacity: .82, roughness: .2 });
+  MAT.steel = new THREE.MeshStandardMaterial({ color: 0x4A5C6E, metalness: .6, roughness: .4 });
+  MAT.steelD = new THREE.MeshStandardMaterial({ color: 0x2F3D4B, metalness: .5, roughness: .5 });
+  MAT.handle = new THREE.MeshStandardMaterial({ color: 0xE2A012, roughness: .4, emissive: 0x402800 });
+  MAT.glass = new THREE.MeshStandardMaterial({ color: 0x1E2F3D, metalness: .8, roughness: .1 });
+  MAT.lamp  = new THREE.MeshBasicMaterial({ color: 0xFFE9A8 });
+  MAT.halo = new THREE.SpriteMaterial({ map: canvasTex(64, 64, c => { const g = c.createRadialGradient(32, 32, 2, 32, 32, 30); g.addColorStop(0, 'rgba(255,230,160,1)'); g.addColorStop(1, 'rgba(255,230,160,0)'); c.fillStyle = g; c.fillRect(0, 0, 64, 64); }, false), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0 });   // brillo de luces
+  MAT.lR = new THREE.MeshBasicMaterial({ color: 0x3A0F0C }); MAT.lY = new THREE.MeshBasicMaterial({ color: 0x3A3000 }); MAT.lG = new THREE.MeshBasicMaterial({ color: 0x2BD96B });   // semáforo
+  MAT.grass = new THREE.MeshStandardMaterial({ color: 0x4F9A55, roughness: 1 }); MAT.blue = new THREE.MeshStandardMaterial({ color: 0x1F5FA8, roughness: .6 });
+  MAT.rock = new THREE.MeshStandardMaterial({ color: 0x8C969F, roughness: 1, flatShading: true });
+  MAT.line  = new THREE.MeshBasicMaterial({ color: 0xE8C547 });
+  MAT.red   = new THREE.MeshStandardMaterial({ color: 0xC63A28, roughness: .6 });
+  MAT.white = new THREE.MeshStandardMaterial({ color: 0xF2F4F6, roughness: .6 });
+  MAT.earth = new THREE.MeshStandardMaterial({ color: 0x86765F, roughness: 1 });
+  MAT.mount = new THREE.MeshStandardMaterial({ color: 0x6F8A78, roughness: 1, flatShading: true });
+  MAT.snow  = new THREE.MeshStandardMaterial({ color: 0xF4F8FA, roughness: 1, flatShading: true });
+  MAT.win   = new THREE.MeshStandardMaterial({ map: wins, roughness: .8 });
+  const winEm = canvasTex(128, 128, (x, w, hh) => { x.fillStyle = '#000'; x.fillRect(0, 0, w, hh); x.fillStyle = '#FFD27A'; for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) if (!((i * j) % 3)) x.fillRect(10 + i * 30, 10 + j * 30, 18, 20); }, false);   // ventanas encendidas
+  MAT.wins = [0xF2D7A6, 0xBFD9E8, 0xE8B4A0, 0xCFE3C0].map(c => new THREE.MeshStandardMaterial({ map: wins, color: c, roughness: .8, emissiveMap: winEm, emissive: 0xFFD27A, emissiveIntensity: 0 }));
+  MAT.roof  = new THREE.MeshStandardMaterial({ color: 0x7A8791, roughness: .9 });
+  MAT.leaf  = new THREE.MeshStandardMaterial({ color: 0x3F7D4E, roughness: 1 });
+  MAT.trunk = new THREE.MeshStandardMaterial({ color: 0x6B4E37, roughness: 1 });
+  MAT.dot   = new THREE.PointsMaterial({ color: 0xffffff, size: .15, transparent: true, opacity: .9 });
+
+  // Suelo de fondo y grupo del modelo (el grupo se inclina para mostrar la pendiente S0)
+  const bg = new THREE.Mesh(new THREE.PlaneGeometry(400, 400).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x9DB09F, roughness: 1 }));
+  bg.position.y = -6.2; bg.receiveShadow = true; scene3.add(bg);
+  [[-60,-95,30,26],[-20,-115,40,36],[30,-100,32,28],[80,-95,30,24],[115,-55,26,22],[-105,-50,28,24]].forEach(([x, z, rd, hh]) => {   // Sierra Nevada al fondo
+    const m = new THREE.Mesh(new THREE.ConeGeometry(rd, hh, 7), MAT.mount); m.position.set(x, -6.2 + hh / 2, z); scene3.add(m);
+    if (hh > 30) { const c = new THREE.Mesh(new THREE.ConeGeometry(rd * .28, hh * .26, 7), MAT.snow); c.position.set(x, -6.2 + hh * .87, z); scene3.add(c); }
+  });
+  const cloudT = canvasTex(128, 128, (c, w, h) => { const g = c.createRadialGradient(64, 64, 4, 64, 64, 60); g.addColorStop(0, 'rgba(255,255,255,.95)'); g.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, w, h); }, false);
+  G3.clouds = Array.from({ length: 9 }, (_, i) => { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: cloudT, transparent: true, opacity: .8, fog: false, depthWrite: false })); sp.position.set(-80 + i * 22, 38 + (i % 3) * 6, -40 - (i % 4) * 14); sp.scale.set(40, 16, 1); scene3.add(sp); return sp; });
+  const RN = 700, ra = new Float32Array(RN * 6);
+  for (let i = 0; i < RN; i++) { const x = Math.random() * 50 - 25, y = Math.random() * 25, z = Math.random() * 40 - 20; ra.set([x, y, z, x, y - .6, z], i * 6); }
+  const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.BufferAttribute(ra, 3));
+  G3.rain = new THREE.LineSegments(rg, new THREE.LineBasicMaterial({ color: 0xBFD6EA, transparent: true, opacity: .55 })); G3.rain.frustumCulled = false; G3.rain.visible = false; scene3.add(G3.rain);
+  world = new THREE.Group(); dyn = new THREE.Group(); world.add(dyn); scene3.add(world);
+
+  controls = new THREE.OrbitControls(camera, cv);
+  controls.enableDamping = true; controls.dampingFactor = .08; controls.maxPolarAngle = Math.PI * .495;
+  controls.minDistance = 4; controls.maxDistance = 75; controls.autoRotateSpeed = .9;
+  camera.position.set(...VIEWS.gen.p); controls.target.set(...VIEWS.gen.t);
+
+  G3.ray = new THREE.Raycaster(); G3.ps = Array.from({ length: 90 }, () => ({ x0: Math.random() * LC, v: Math.random() - .5, sp: .8 + Math.random() * .5 }));
+  G3.sd = Array.from({ length: 110 }, () => ({ u: Math.random(), a: Math.random() * 6.28, r: Math.random(), s: .6 + Math.random() }));
+  G3.player = makePlayer(); G3.player.visible = false; scene3.add(G3.player); G3.keys = {}; initGame();
+  bindPointer(); resize();
+}
+
+/* Utilidades de modelado */
+function BX(w, h, d, mat, x, y, z, uv) {
+  const g = new THREE.BoxGeometry(w, h, d);
+  if (uv) { const a = g.attributes.uv; for (let i = 0; i < a.count; i++) a.setXY(i, a.getX(i) * uv, a.getY(i) * uv); }
+  const m = new THREE.Mesh(g, mat); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; dyn.add(m); return m;
+}
+const PLANE = (w, d, sx, sz, mat, x, y, z) => {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d, sx, sz).rotateX(-Math.PI / 2), mat); m.position.set(x, y, z); m.receiveShadow = true; dyn.add(m); return m;
+};
+const add = (o, x, y, z) => { o.position.set(x, y, z); o.castShadow = true; dyn.add(o); return o; };
+function palm(x, z) {                                              // palmera costera: tronco + 8 frondas
+  add(new THREE.Mesh(new THREE.CylinderGeometry(.1, .2, 4.2, 6), MAT.trunk), x, 2.1, z);
+  for (let k = 0; k < 8; k++) { const f = new THREE.Mesh(new THREE.ConeGeometry(.22, 2.4, 3).translate(0, 1.2, 0), MAT.leaf); f.rotation.set(0, k * .785, 1.15); f.castShadow = true; f.position.set(x, 4.2, z); dyn.add(f); }
+}
+function lamp(x, z) {
+  const sd = Math.sign(z);
+  add(new THREE.Mesh(new THREE.CylinderGeometry(.06, .09, 4.6, 8), MAT.steelD), x, 2.3, z);
+  BX(.12, .1, 1.1, MAT.steelD, x, 4.6, z + sd * .55); add(new THREE.Mesh(new THREE.SphereGeometry(.16, 10, 8), MAT.lamp), x, 4.5, z + sd * 1.05);
+  const hs = new THREE.Sprite(MAT.halo); hs.position.set(x, 4.5, z + sd * 1.05); hs.scale.set(2.6, 2.6, 1); dyn.add(hs);
+}
+function car(x, z, c) {
+  const m = MAT['c' + c] = MAT['c' + c] || new THREE.MeshStandardMaterial({ color: c, metalness: .5, roughness: .35 });
+  BX(3.6, .7, 1.6, m, x, .6, z); BX(1.9, .55, 1.4, MAT.glass, x - .2, 1.2, z);
+  [[-1.2, -.8], [-1.2, .8], [1.2, -.8], [1.2, .8]].forEach(([dx, dz]) => add(new THREE.Mesh(new THREE.CylinderGeometry(.32, .32, .25, 12).rotateX(Math.PI / 2), MAT.steelD), x + dx, .32, z + dz));
+}
+function LBL(t, x, y, z, sc) {                                    // etiqueta 3D (sprite con texto)
+  const tex = canvasTex(256, 64, (c, w, h) => { c.fillStyle = 'rgba(10,37,64,.88)'; c.fillRect(0, 0, w, h); c.fillStyle = '#fff'; c.font = "600 30px 'IBM Plex Sans', sans-serif"; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(t, w / 2, h / 2 + 2); }, false);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); sp.position.set(x, y, z); sp.scale.set(sc, sc / 4, 1); sp.renderOrder = 10; dyn.add(sp);
+}
+/* =====================================================================
+   FASE 2: CIUDAD VIVA. Props instanciados, tráfico con semáforo y peatones.
+   InstancedMesh = un draw call por tipo de objeto; sin objetos nuevos por cuadro.
+   ===================================================================== */
+const CWX = 0, NPC_N = 14, NC = [0xE76F51, 0x2A9D8F, 0xE9C46A, 0x8AB17D, 0x9B5DE5, 0xF4A261, 0x457B9D];   // x del paso peatonal, nº de peatones, camisas
+const _o = new THREE.Object3D(); _o.rotation.order = 'YXZ';
+const rng = s => () => (s = (s * 16807) % 2147483647) / 2147483647;          // azar determinista: el paisaje no "salta" al reconstruir
+function inst(geo, mat, list, shadow) {
+  const m = new THREE.InstancedMesh(geo, mat, list.length);
+  list.forEach(([x, y, z, ry, sc], i) => { _o.position.set(x, y, z); _o.rotation.set(0, ry || 0, 0); _o.scale.setScalar(sc || 1); _o.updateMatrix(); m.setMatrixAt(i, _o.matrix); });
+  m.frustumCulled = false; m.castShadow = !!shadow; m.receiveShadow = true; dyn.add(m); return m;
+}
+function cityProps(hb, bgx) {
+  const r = rng(7), far = GW - 3.3, lz = Math.min(hb + 4.3, GW - 4), rnd = (a, b) => a + (b - a) * r();
+  // Barandas junto al canal (postes instanciados + pasamanos, con paso libre en el puente)
+  const posts = []; for (let x = -XC + 1; x < XC; x += 2) if (Math.abs(x - bgx) > 2.3) [-1, 1].forEach(sd => posts.push([x, .6, sd * (hb + .12)]));
+  inst(new THREE.BoxGeometry(.08, 1.1, .08), MAT.steel, posts, true);
+  [-1, 1].forEach(sd => { BX(bgx - 2.1 + XC, .06, .06, MAT.steel, (bgx - 2.1 - XC) / 2, 1.1, sd * (hb + .12)); BX(XC - bgx - 2.1, .06, .06, MAT.steel, (bgx + 2.1 + XC) / 2, 1.1, sd * (hb + .12)); });
+  // Paso peatonal, semáforos (lámparas con materiales compartidos que cambia cityStep) y señales
+  [-1, 1].forEach(sd => {
+    for (let z = hb + 1.8; z < far; z += .8) BX(3, .02, .45, MAT.white, CWX, .012, sd * z);
+    const sx = CWX + (sd > 0 ? 2.6 : -2.6), fc = sd > 0 ? .17 : -.17, pz = sd * (hb + 1.55);
+    BX(.08, 3.2, .08, MAT.steelD, sx, 1.6, pz); BX(.3, .95, .3, MAT.steelD, sx, 3.3, pz);
+    [[MAT.lR, 3.58], [MAT.lY, 3.3], [MAT.lG, 3.02]].forEach(([m, y]) => { const l = new THREE.Mesh(new THREE.SphereGeometry(.09, 8, 6), m); l.position.set(sx + fc, y, pz); dyn.add(l); });
+  });
+  [[-12, -1, MAT.red], [12, 1, MAT.blue], [-5, 1, MAT.white], [9, -1, MAT.red]].forEach(([x, sd, m]) => { const z = sd * (hb + 1.5); BX(.06, 2.2, .06, MAT.steel, x, 1.1, z); BX(.5, .5, .05, m, x, 2.3, z); BX(.3, .3, .06, MAT.white, x, 2.3, z); });
+  // Alcantarillas, bancas, contenedores, rocas y arbustos
+  inst(new THREE.CylinderGeometry(.45, .45, .03, 12), MAT.steelD, [[-6, .02, lz], [5, .02, lz], [-6, .02, -lz], [9, .02, -lz]]);
+  const bn = [[2, .45, -(GW - 1.6), 0], [4.2, .45, -(GW - 1.6), 0], [-12, .45, hb + 1.45, Math.PI], [10, .45, -(hb + 1.45), 0]];
+  inst(new THREE.BoxGeometry(1.4, .08, .4), MAT.trunk, bn, true); inst(new THREE.BoxGeometry(1.4, .4, .06).translate(0, .25, -.18), MAT.trunk, bn, true);
+  inst(new THREE.BoxGeometry(.9, 1.1, .7), MAT.leaf, [[-9.3, .55, far, 0], [-1, .55, far, 0], [8.5, .55, -far, 0], [14, .55, far, 0]], true);
+  const rocks = [], shrubs = [];
+  for (let i = 0; i < 12; i++) { const sd = i % 2 ? 1 : -1; rocks.push([rnd(-XC + 1, XC - 1), .18, sd * rnd(far - .4, far), r() * 6, rnd(.5, 1.1)]); }
+  for (let i = 0; i < 16; i++) { const sd = i % 2 ? 1 : -1; shrubs.push([rnd(-XC + 1, XC - 1), .35, sd * rnd(far + .05, far + .25), 0, rnd(.7, 1.2)]); }
+  inst(new THREE.DodecahedronGeometry(.35, 0), MAT.rock, rocks, true); inst(new THREE.IcosahedronGeometry(.4, 0), MAT.leaf, shrubs, true);
+  // Parque con pasto, árboles y bancas (reemplaza un edificio)
+  BX(5.5, .05, 3.1, MAT.grass, 3, .03, -(GW - 1.55)); palm(1.2, -(GW - 1)); palm(5, -(GW - 1));
+}
+// ---- Vehículos de tráfico: carro, camioneta, camión y motocicleta ----
+const VS = { car: { L: 3.8, W: 1.6, H: .65, cab: [1.9, .55, -.3], wx: [1.2, -1.2], wr: .33 }, pickup: { L: 4.4, W: 1.8, H: .75, cab: [1.5, .65, .7], wx: [1.4, -1.4], wr: .38 },
+  truck: { L: 6.5, W: 2.1, H: .9, cab: [1.7, 1.25, 2.4], cargo: [4.2, 1.6, -.9], wx: [2.3, -2.2], wr: .5 }, moto: { L: 1.9, W: .4, H: .4, cab: [.5, .7, -.1], wx: [.7, -.7], wr: .3 } };
+const TRAFFIC = [['car', 0xC63A28], ['pickup', 0x1F4E8C], ['truck', 0xE8E8E8], ['moto', 0x222222], ['car', 0xE2A012], ['car', 0x7A8791], ['pickup', 0x2A9466], ['moto', 0xC63A28]];
+function vehicle(type, col) {
+  const s = VS[type], g = new THREE.Group(), paint = new THREE.MeshStandardMaterial({ color: col, metalness: .4, roughness: .4 }), wheels = [];
+  const box = (w, hh, d, m, x, y, z) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, hh, d), m); o.position.set(x, y, z); o.castShadow = true; g.add(o); };
+  box(s.L, s.H, s.W, paint, 0, s.H / 2 + .3, 0); box(s.cab[0], s.cab[1], s.W * .9, type === 'truck' ? paint : MAT.glass, s.cab[2], s.H + .3 + s.cab[1] / 2, 0);
+  if (s.cargo) box(s.cargo[0], s.cargo[1], s.W, MAT.white, s.cargo[2], s.H + .3 + s.cargo[1] / 2, 0);
+  box(.06, .14, s.W * .6, MAT.lamp, s.L / 2, s.H / 2 + .35, 0); box(.06, .12, s.W * .6, MAT.red, -s.L / 2, s.H / 2 + .35, 0);
+  { const hs = new THREE.Sprite(MAT.halo); hs.position.set(s.L / 2 + .2, s.H / 2 + .35, 0); hs.scale.set(1.8, 1.8, 1); g.add(hs); }
+  s.wx.forEach(x => (type === 'moto' ? [0] : [-1, 1]).forEach(k => { const w = new THREE.Mesh(new THREE.CylinderGeometry(s.wr, s.wr, .25, 12).rotateX(Math.PI / 2), MAT.steelD); w.position.set(x, s.wr, k * (s.W / 2)); g.add(w); wheels.push([w, s.wr]); }));
+  g.userData.wheels = wheels; return g;
+}
+function initCrowd() {
+  G3.tr = TRAFFIC.map(([t, c], i) => { const g = vehicle(t, c), side = i % 2 ? 1 : -1; scene3.add(g); return { g, side, dir: -side, x: -XC + 4 + (i >> 1) * 8.5 + (side > 0 ? 3 : 0), z: 0, v: 0, vmax: t === 'truck' ? 7 : t === 'moto' ? 10 : 9 }; });
+  const std = new THREE.MeshStandardMaterial({ roughness: .85 }), col = new THREE.Color(), rnd = rng(11), N = NPC_N;
+  const mk = (geo, n) => { const m = new THREE.InstancedMesh(geo, std, n); m.frustumCulled = false; m.castShadow = true; scene3.add(m); return m; };
+  const B = G3.np = { body: mk(new THREE.BoxGeometry(.4, .6, .22), N), head: mk(new THREE.BoxGeometry(.3, .3, .3), N), arm: mk(new THREE.BoxGeometry(.14, .6, .14).translate(0, -.3, 0), 2 * N), leg: mk(new THREE.BoxGeometry(.18, .7, .18).translate(0, -.35, 0), 2 * N) };
+  G3.npc = Array.from({ length: N }, (_, i) => {
+    B.body.setColorAt(i, col.setHex(NC[i % NC.length])); B.arm.setColorAt(2 * i, col); B.arm.setColorAt(2 * i + 1, col);
+    B.head.setColorAt(i, col.setHex([0xC98F5E, 0xE0B48A, 0x8D5A3B, 0xF1C9A0][i % 4]));
+    B.leg.setColorAt(2 * i, col.setHex(0x2B3A55)); B.leg.setColorAt(2 * i + 1, col);
+    const side = i % 2 ? 1 : -1, cross = i >= 8;
+    return { x: cross ? CWX + (rnd() - .5) * 2.4 : -XC + 2 + rnd() * (LT - 4), z: side * (state.b / 2 + 1.1), yaw: 0, ph: rnd() * 6, side, cross, dir: rnd() > .5 ? 1 : -1, st: 0, wait: 1 + rnd() * 5, toFar: true };
+  });
+  Object.values(B).forEach(m => { m.instanceColor.needsUpdate = true; });
+  G3.npc.forEach((n, i) => {                                               // cada peatón usa character-<letra>.glb (a…r, sin q)
+    const url = 'character-' + NPC_LETTERS[i % NPC_LETTERS.length] + '.glb';
+    chrLoad(url, gltf => attachNpc(n, i, gltf, url), () => { console.warn(TAG, 'El peatón', i, 'conserva su figura voxel: falta', url); chrTick(false); });
+  });
+}
+const follow = (v, ox, oz) => { const gap = (ox - v.x) * v.dir; return gap > 0 && gap < 9 && Math.abs(oz - v.z) < 1.6 ? Math.max(0, (gap - 4.5) * 1.5) : 99; };   // frena si hay algo adelante
+const setM = (m, i, x, y, z, rx, ry) => { _o.position.set(x, y, z); _o.rotation.set(rx, ry, 0); _o.scale.setScalar(1); _o.updateMatrix(); m.setMatrixAt(i, _o.matrix); };
+function cityStep(dt) {
+  const hb = state.b / 2, tp = T % 16, ph = tp < 8 ? 0 : tp < 10 ? 1 : 2, pedGreen = tp >= 10.5, flee = R.overflow && !!G3.flood, lz = Math.min(hb + 4.3, GW - 4);
+  if (ph !== G3.lph) { G3.lph = ph; MAT.lR.color.setHex(ph === 2 ? 0xFF3B30 : 0x3A0F0C); MAT.lY.color.setHex(ph === 1 ? 0xFFCC00 : 0x3A3000); MAT.lG.color.setHex(ph === 0 ? 0x2BD96B : 0x0C3A1C); }
+  G3.tr.forEach(v => {                                                         // tráfico: semáforo + distancia de seguimiento + cede al jugador
+    v.z = v.side * lz; let tv = v.vmax;
+    const dsl = (CWX - v.dir * 2.6 - v.x) * v.dir; if (ph !== 0 && dsl > -.3 && dsl < 9) tv = Math.min(tv, Math.max(0, dsl - 1) * 1.2);
+    G3.tr.forEach(o => { if (o !== v && o.side === v.side) tv = Math.min(tv, follow(v, o.x, o.z)); });
+    tv = Math.min(tv, follow(v, G3.cs.x, G3.cs.z)); if (G3.play && !G3.driving) tv = Math.min(tv, follow(v, G3.pl.x, G3.pl.z));
+    v.v += (tv - v.v) * Math.min(1, 2.5 * dt); v.x += v.dir * v.v * dt; if (v.dir * v.x > XC - 1) v.x = -v.dir * (XC - 1);
+    v.g.position.set(v.x, 0, v.z); v.g.rotation.y = v.dir > 0 ? 0 : Math.PI; v.g.userData.wheels.forEach(([w, rd]) => { w.rotation.z -= v.v * dt / rd; });
+  });
+  const B = G3.np;
+  G3.npc.forEach((n, i) => {                                                   // peatones: pasean, cruzan con semáforo y huyen del agua
+    const zs = n.side * (hb + 1.1), zf = n.side * (GW - 3.3); let tx = n.x, tz = n.z, sp = 1.3;
+    if (flee) { tz = n.side * (GW - 3.1); sp = 4.2; }
+    else if (!n.cross) { if (Math.abs(n.x) > XC - 1.5) n.dir = -Math.sign(n.x); tx = n.x + n.dir * 3; tz = zs; }
+    else if (n.st === 0) { n.wait -= dt; if (n.wait <= 0 && pedGreen) n.st = 1; }
+    else { tz = n.toFar ? zf : zs; sp = 1.7; if (Math.abs(n.z - tz) < .1) { n.st = 0; n.toFar = !n.toFar; n.wait = 1 + (i % 4); } }
+    const dx = tx - n.x, dz = tz - n.z, d = Math.hypot(dx, dz), mv = d > .06;
+    if (mv) { const k = Math.min(d, sp * dt) / d; n.x += dx * k; n.z += dz * k; n.yaw = Math.atan2(dx, dz); n.ph += dt * sp * 3.2; }
+    if (n.glb) {                                                               // peatón GLB: giro suave y animación por AnimationMixer
+      n.gy += adiff(n.yaw, n.gy) * Math.min(1, dt * 10); n.glb.position.set(n.x, 0, n.z); n.glb.rotation.y = n.gy;
+      if (Math.hypot(n.x - camera.position.x, n.z - camera.position.z) < 45) animState(n.ctl, mv ? (flee ? 'run' : 'walk') : 'idle', dt, Math.max(.6, sp / (flee ? 6 : 3.2)));   // solo se animan los cercanos
+      return;
+    }
+    const sw = mv ? Math.sin(n.ph) * (flee ? 1.1 : .7) : 0, c = Math.cos(n.yaw), s = Math.sin(n.yaw);
+    setM(B.body, i, n.x, 1, n.z, 0, n.yaw); setM(B.head, i, n.x, 1.45, n.z, 0, n.yaw);
+    for (let j = 0; j < 2; j++) { const k = j * 2 - 1; setM(B.arm, 2 * i + j, n.x + k * .28 * c, 1.3, n.z - k * .28 * s, -k * sw, n.yaw); setM(B.leg, 2 * i + j, n.x + k * .1 * c, .7, n.z - k * .1 * s, k * sw, n.yaw); }
+  });
+  Object.values(B).forEach(m => { m.instanceMatrix.needsUpdate = true; });
+}
+const BLD = [[-12,-1,5,3.6],[-5,-1,6,2.6],[11,-1,6,3],[-11,1,6,2.8],[-3,1,5,3.8],[5,1,6,2.6],[13,1,5,3.4]];
+
+/* Reconstruye la geometría que depende de los parámetros (se invoca al cambiar un control) */
+function rebuild3D(r) {
+  if (!HAS3D || !dyn) return;
+  dyn.children.slice().forEach(o => { dyn.remove(o); o.traverse(n => { if (n.geometry) n.geometry.dispose(); if (n.isSprite && n.material !== MAT.halo) { n.material.map.dispose(); n.material.dispose(); } }); });
+  const s = state, b = s.b, H = s.H, hb = b / 2, slab = H + .9, hgE = Math.min(s.hg, H);
+  const dz = GW - hb - .3; G3.solids = []; G3.pois = [];
+  world.rotation.z = G3.play ? 0 : -Math.min(s.S0 * EXAG, .3);
+
+  // Terreno urbano, andenes, muros de concreto y solera
+  [-1, 1].forEach(sd => {
+    BX(LT, slab, dz, MAT.asph, 0, -slab / 2, sd * (hb + .3 + dz / 2), 8);
+    BX(LT, .12, 1.3, MAT.conc, 0, .06, sd * (hb + .95), 8);
+    BX(LT, H, .3, MAT.conc, 0, -H / 2, sd * (hb + .15), 8);
+    BX(LT, .1, .5, MAT.conc, 0, .05, sd * (hb + .25), 8);
+  });
+  BX(LT, .9, b + .6, MAT.floor, 0, -H - .45, 0, 8);
+  BX(LT, 6.2 - slab, 2 * GW, MAT.earth, 0, -(slab + (6.2 - slab) / 2), 0, 4);   // cimiento de tierra hasta el suelo de fondo
+
+  // Lámina de agua aguas arriba (la malla se deforma cada cuadro: oleaje + perfil de remanso)
+  MAT.waterTex.repeat.set(LC / 5, Math.max(1, b / 4)); MAT.waterNrm.repeat.set(LC / 3, Math.max(1, b / 3));
+  G3.water = PLANE(LC, b, 64, 8, MAT.water, LC / 2 - XC, 0, 0);
+  G3.water.geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(G3.water.geometry.attributes.position.count * 3), 3));
+
+  // Inundación sobre las calles
+  const xo = (() => { if (r.yn > H) return 0; for (let x = 0; x <= LC; x += LC / 60) if (r.depthAt(x) > H) return x; return LC; })();
+  G3.flood = null;
+  if (r.overflow) {
+    const wf = Math.min(GW - 2.4 - hb, 1.2 + 5 * r.dFlood), hf = Math.min(.9, .2 + .5 * r.dFlood);
+    G3.flood = { x0: xo - XC, x1: LC - XC, w: wf };
+    [-1, 1].forEach(sd => { const m = BX(LC - xo, hf, wf, MAT.flood, (xo + LC) / 2 - XC, hf / 2, sd * (hb + .3 + wf / 2)); m.castShadow = false; });
+  }
+
+  // Compuerta: placa, marco, husillo y volante naranja (arrastrable)
+  const gx = LC - XC, top = 1.7;
+  const plate = BX(.18, top + H - hgE, b + .1, MAT.steel, gx, (-H + hgE + top) / 2, 0);
+  const handle = new THREE.Mesh(new THREE.SphereGeometry(.26, 18, 14), MAT.handle);
+  handle.position.set(gx, top + 1.5, 0); dyn.add(handle);
+  const stem = BX(.1, 1.3, .1, MAT.steelD, gx, top + .75, 0);
+  plate.visible = handle.visible = stem.visible = s.gate;
+  [-1, 1].forEach(sd => BX(.4, H + top, .35, MAT.steelD, gx, (top - H) / 2, sd * (hb + .17)));
+  BX(.4, .3, b + .9, MAT.steelD, gx, top + .15, 0);
+  G3.gate = plate; G3.handle = handle;
+
+  // Chorro parabólico y lámina supercrítica sobre el disipador
+  const xEnd = Math.min(r.xL, LD - .3), th = clamp(r.Aexit / b, .08, 1.2) * .6, tk = clamp(r.Aexit / b * .3, .08, .28);
+  const jg = new THREE.BoxGeometry(xEnd, 1, b, 40, 1, 1), pa = jg.attributes.position;
+  for (let i = 0; i < pa.count; i++) { const x = pa.getX(i) + xEnd / 2; pa.setY(i, -H + Math.max(.02, r.jetY(x)) + Math.sign(pa.getY(i)) * th / 2); }
+  pa.needsUpdate = true; jg.computeVertexNormals();
+  const jet = new THREE.Mesh(jg, MAT.jet); jet.position.set(gx + xEnd / 2, 0, 0); dyn.add(jet);
+  MAT.foamTex.repeat.set(Math.max(1, LD / 4), Math.max(1, b / 4));
+  PLANE(LT - LC - xEnd, b, 1, 1, MAT.jet, (LC + xEnd + LT) / 2 - XC, -H + tk, 0);
+  G3.xEnd = xEnd; G3.sheetX = LC + xEnd;
+
+  // Entorno urbano: edificios coloniales, palmeras, alumbrado, calzada, vehículos, puente, limnímetro y disipador
+  BLD.forEach(([x, sd, w, hh], i) => { const m = MAT.wins[i % 4]; G3.solids.push(BX(w, hh, 3, [m, m, MAT.roof, MAT.roof, m, m], x, hh / 2, sd * (GW - 1.5))); });
+  const rz = sd => sd * Math.min(hb + 3.4, GW - 4.2);               // eje de la calzada
+  for (let x = -XC + 2; x < XC; x += 5.5) [-1, 1].forEach(sd => palm(x, sd * (GW - 5.4)));
+  for (let x = -XC + 3; x < XC; x += 11) [-1, 1].forEach(sd => lamp(x, sd * (hb + 1.2)));
+  for (let x = -XC + 2; x < XC - 2; x += 3) [-1, 1].forEach(sd => BX(1.4, .02, .12, MAT.line, x, .01, rz(sd)));
+  [[-9, 1, 0xC63A28], [-1, -1, 0xE8E8E8], [8, 1, 0x1F4E8C], [12, -1, 0xE2A012]].forEach(([x, sd, c]) => car(x, sd * Math.min(hb + 2.5, GW - 4.2), c));
+  const bgx = -XC + 8;                                              // puente peatonal sobre el arroyo
+  BX(3.2, .35, b + 3.2, MAT.conc, bgx, 1.25, 0, 2);
+  [-1, 1].forEach(sd => { BX(3.2, 1.1, .9, MAT.conc, bgx, .55, sd * (hb + 1.2)); BX(3.2, .55, .12, MAT.steel, bgx, 1.8, sd * (hb + 1.55)); });
+  const sx = -XC + 11;                                              // regleta limnimétrica con marca del nivel actual
+  for (let k = 0; k < Math.ceil(H / .25); k++) BX(.14, .25, .03, k % 2 ? MAT.red : MAT.white, sx, -H + .125 + k * .25, hb - .03);
+  LBL(`y = ${fmt(r.yEff, 2)} m`, sx, -H + Math.min(r.yEff, H) + .8, hb - .2, 2.4);
+  if (s.gate) LBL(`hg = ${fmt(hgE, 2)} m`, gx, top + 2.3, 0, 2.6);
+  LBL(`caída x = ${fmt(r.xL, 2)} m`, gx + xEnd, -H + 1.5, 0, 3);
+  const bfx = gx + Math.min(xEnd + .9, LD - 2.6);                  // bloques de impacto y umbral terminal del disipador
+  for (let z = -hb + .5; z < hb - .2; z += 1.1) BX(.5, .7, .5, MAT.conc, bfx, -H + .35, z);
+  BX(.4, .5, b, MAT.conc, LT - XC - .3, -H + .25, 0);
+  const poi = (id, x, c) => { BX(.7, 1.3, .2, MAT.steelD, x, .75, hb + 1.0); BX(.6, .4, .22, c, x, 1.15, hb + 1.0); G3.pois.push({ id, x, z: hb + 1.0 }); };   // paneles interactivos (tecla E)
+  cityProps(hb, bgx);
+  poi('gate', gx - 2, MAT.handle); poi('gauge', sx + 1.5, MAT.white); poi('bridge', bgx + 3, MAT.glass); poi('pump', gx - 8, MAT.lamp);
+  if (G3.car && !G3.cs.moved) { G3.cs.x = -XC + 6; G3.cs.z = -Math.min(hb + 2.5, GW - 4.2); G3.cs.h = 0; placeCar(); }
+
+  // Partículas: flotantes sobre el agua, rocío del chorro y espuma de la caída
+  const mk = n => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3)); const p = new THREE.Points(g, MAT.dot); p.frustumCulled = false; dyn.add(p); return p; };
+  G3.floats = mk(G3.ps.length); G3.spray = mk(G3.sd.length);
+}
+
+/* Cuadro de animación: oleaje, texturas en movimiento, partículas */
+function render3D(dt) {
+  if (!R || !G3.water) return;
+  const s = state, H = s.H, b = s.b, vis = clamp(R.Vn * .45, .4, 8);
+  const amp = .015 + .045 * Math.min(R.Fr, 2.2) * Math.min(1, R.yn / .6);
+  const pos = G3.water.geometry.attributes.position, wc = G3.water.geometry.attributes.color;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i) + LC / 2, z = pos.getZ(i);
+    const dd = Math.min(R.depthAt(x), H), t = Math.min(1, dd / H * 1.4);      // somero = turquesa, profundo = azul; espuma junto a muros y compuerta
+    const f = (Math.abs(z) > b / 2 - .5 ? Math.min(.5, Math.max(0, R.Fr - .6) * .5) : 0) + (s.gate && x > LC - 1.5 ? .25 : 0);
+    wc.setXYZ(i, .37 - .3 * t + (.63 + .3 * t) * f, .8 - .49 * t + (.2 + .49 * t) * f, .84 - .29 * t + (.16 + .29 * t) * f);
+    pos.setY(i, -H + dd + Math.sin(x * 1.4 - T * vis * 1.8 + z * 2.2) * amp + Math.sin(x * .7 - T * vis + z * 4.1) * amp * .6);
+  }
+  pos.needsUpdate = true; wc.needsUpdate = true; G3.water.geometry.computeVertexNormals();
+  MAT.waterTex.offset.x = -(T * vis / 5) % 1;                    // el desplazamiento de la textura sigue la velocidad real
+  MAT.foamTex.offset.x = -(T * vis * 1.4 / 4) % 1;
+  MAT.waterNrm.offset.x = -(T * vis / 3) % 1;
+
+  const fp = G3.floats.geometry.attributes.position;
+  G3.ps.forEach((p, i) => { const x = (p.x0 + T * vis * p.sp) % LC; fp.setXYZ(i, x - XC, -H + Math.min(R.depthAt(x), H) + .06, p.v * b * .9); });
+  fp.needsUpdate = true;
+  const sp = G3.spray.geometry.attributes.position, xe = G3.xEnd;
+  G3.sd.forEach((q, i) => {
+    const u = (q.u + T * .5 * q.s) % 1, x = u * xe;
+    if (i % 3 === 0) { const k = Math.abs(Math.sin(T * 4 + q.a * 3)); sp.setXYZ(i, LC - XC + xe + Math.cos(q.a) * .5 * q.r, -H + .05 + k * .55 * q.r, Math.sin(q.a) * b * .45 * q.r); }
+    else sp.setXYZ(i, LC - XC + x, -H + Math.max(0, R.jetY(x)) + (q.r - .5) * .3, (Math.sin(q.a)) * b * .45);
+  });
+  sp.needsUpdate = true;
+
+  G3.clouds.forEach(c => { if (running) c.position.x = ((c.position.x + dt * .8 + 110) % 220) - 110; });
+  if (G3.rain.visible) {
+    const rp = G3.rain.geometry.attributes.position;
+    if (running) for (let i = 0; i < rp.count; i += 2) { const y = rp.getY(i) - 20 * dt; rp.setY(i, y < -3 ? y + 28 : y); rp.setY(i + 1, (y < -3 ? y + 28 : y) - .6); }
+    rp.needsUpdate = true; G3.rain.geometry.setDrawRange(0, Math.floor(700 * clamp(s.Q / 40, .2, 1)) * 2);
+  }
+  if (tween) {                                                   // transición suave entre vistas guiadas
+    const k = Math.min(1, (performance.now() - tween.t0) / tween.dur), e = k * k * (3 - 2 * k);
+    camera.position.lerpVectors(tween.p0, tween.p1, e); controls.target.lerpVectors(tween.q0, tween.q1, e);
+    if (k >= 1) tween = null;
+  }
+  fxStep(running ? dt : 0);
+  if (running && G3.tr) cityStep(dt);
+  if (G3.play) playStep(dt); else controls.update();
+  if (G3.play) hudStep();
+  renderer.render(scene3, camera);
+}
+
+/* Interacción: info al pasar el cursor y compuerta arrastrable */
+function bindPointer() {
+  const ndc = e => { const r = cv.getBoundingClientRect(); return new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); };
+  const showTip = (t, e) => { const r = cv.getBoundingClientRect(); tip.style.display = 'block'; tip.textContent = t; tip.style.left = (e.clientX - r.left + 14) + 'px'; tip.style.top = (e.clientY - r.top + 14) + 'px'; };
+  cv.addEventListener('pointerdown', e => {
+    if (G3.play || !state.gate || !G3.gate) return;
+    G3.ray.setFromCamera(ndc(e), camera);
+    if (G3.ray.intersectObjects([G3.gate, G3.handle]).length) {
+      drag = { y0: e.clientY, hg: state.hg }; controls.enabled = false; cv.setPointerCapture(e.pointerId);
+      e.stopImmediatePropagation();                              // evita que OrbitControls rote mientras se mueve la compuerta
+    }
+  }, true);
+  cv.addEventListener('pointermove', e => {
+    if (drag) {
+      const dist = camera.position.distanceTo(G3.gate.position), mpp = 2 * dist * Math.tan(camera.fov * Math.PI / 360) / cv.clientHeight;
+      setValue('hg', drag.hg - (e.clientY - drag.y0) * mpp);
+      showTip(`Apertura h_g = ${fmt(state.hg, 2)} m`, e); return;
+    }
+    if (!G3.water || !R || G3.play) return;
+    G3.ray.setFromCamera(ndc(e), camera);
+    if (state.gate && G3.ray.intersectObjects([G3.gate, G3.handle]).length) { cv.style.cursor = 'ns-resize'; showTip('Arrastre hacia arriba o abajo para cambiar h_g', e); return; }
+    cv.style.cursor = '';
+    const hit = G3.ray.intersectObject(G3.water)[0];
+    if (hit) {
+      const x = G3.water.worldToLocal(hit.point.clone()).x + LC / 2, d = Math.max(.02, Math.min(R.depthAt(x), state.H)), V = state.Q / (state.b * d);
+      showTip(`x = ${fmt(x, 1)} m  y = ${fmt(d, 2)} m  V = ${fmt(V, 2)} m/s  Fr = ${fmt(V / Math.sqrt(G * d), 2)}`, e);
+    } else tip.style.display = 'none';
+  });
+  const end = () => { drag = null; controls.enabled = true; tip.style.display = 'none'; };
+  ['pointerup', 'pointercancel'].forEach(ev => cv.addEventListener(ev, end));
+  cv.addEventListener('pointerleave', () => { if (!drag) tip.style.display = 'none'; });
+}
+
+/* =====================================================================
+   MODO JUEGO: recorrer la escena en tercera persona (estilo videojuego)
+   Física simple: gravedad, salto, escalón máximo, agua que frena y arrastra.
+   Criterio didáctico de peligro para personas: h·V (tirante × velocidad).
+   ===================================================================== */
+const BGX = -XC + 8, HV_MAX = 0.8;                                  // posición del puente y umbral h·V (m²/s)
+// ---- Personajes GLB: jugador (character-q.glb) y peatones (character-a … character-r, sin q) con GLTFLoader ----
+const CHAR_URL = 'character-q.glb', CHAR_H = 1.8, TAG = '[Personaje]', NPC_LETTERS = 'abcdefghijklmnopr';   // altura humana (m)
+const ANIM_KEYS = { idle: ['idle', 'stand'], walk: ['walk'], run: ['run', 'sprint', 'jog'], jump: ['jump', 'hop'], fall: ['fall', 'air'], interact: ['interact', 'pick', 'use'] };
+const CHR = { total: 0, done: 0, bad: 0, loader: null }, ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+function pickClip(clips, keys) {                                           // clip cuyo nombre se parece más (orden de preferencia, nombre más corto)
+  for (const k of keys) { const hit = clips.filter(c => c.name.toLowerCase().includes(k)).sort((a, b) => a.name.length - b.name.length)[0]; if (hit) return hit; }
+  return null;
+}
+function chrTick(ok) {                                                     // indicador de carga compartido por todos los personajes
+  const ui = $('chrLoad'); CHR.done++; if (!ok) CHR.bad++;
+  if (CHR.done < CHR.total) { ui.textContent = `Cargando personajes… ${CHR.done}/${CHR.total}`; return; }
+  ui.textContent = CHR.bad ? `${CHR.bad} personaje(s) no se pudieron cargar (ver consola)` : ''; ui.style.display = CHR.bad ? 'block' : 'none';
+  if (CHR.bad) setTimeout(() => { ui.style.display = 'none'; }, 7000);
+}
+function chrLoad(url, ok, bad) {                                           // un único GLTFLoader y un único LoadingManager para todos
+  if (!THREE.GLTFLoader) { console.error(TAG, 'GLTFLoader no está disponible: revisa la conexión o el script del CDN.'); bad(); return; }
+  if (!CHR.loader) { const mgr = new THREE.LoadingManager(); mgr.onError = u => console.error(TAG, 'No se pudo cargar el archivo o la textura:', u, '(debe estar junto a index.html; los GLB piden Textures/texture-X.png)'); CHR.loader = new THREE.GLTFLoader(mgr); }
+  CHR.loader.load(url, ok, undefined, err => { console.error(TAG, 'Falló la carga de ' + url + '. Puede faltar el .glb o su textura.', err); bad(); });
+}
+function fitModel(m, h) {                                                  // escala automática a tamaño humano y pies en y = 0
+  m.traverse(o => { if (o.isMesh) { o.castShadow = true; (Array.isArray(o.material) ? o.material : [o.material]).forEach(mt => { if (!mt.map) console.warn(TAG, 'Material sin textura:', mt.name); }); } });
+  m.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(m), ctr = box.getCenter(new THREE.Vector3()), k = h / (box.getSize(new THREE.Vector3()).y || 1);
+  m.scale.setScalar(k); m.position.set(-ctr.x * k, -box.min.y * k, -ctr.z * k); return k;
+}
+function buildActs(mixer, clips, who) {                                    // detecta automáticamente los clips (idle, walk, run, jump, fall, interact)
+  const act = {};
+  Object.keys(ANIM_KEYS).forEach(st => { const c = pickClip(clips, ANIM_KEYS[st]); act[st] = c ? mixer.clipAction(c) : null; if (!c) console.warn(TAG, who, 'sin animación', st, '(usa reposo)'); });
+  const idle = act.idle || (clips[0] ? mixer.clipAction(clips[0]) : null);
+  if (!idle) console.warn(TAG, who, 'no contiene animaciones.');
+  Object.keys(act).forEach(s => { if (!act[s]) act[s] = idle; }); act.idle = idle; return act;
+}
+function makePlayer() {
+  const g = new THREE.Group(), ui = $('chrLoad');                          // g = contenedor que mueve y gira el controlador
+  CHR.total = 1 + NPC_N; ui.style.display = 'block'; ui.textContent = 'Cargando personajes…';
+  chrLoad(CHAR_URL, gltf => {
+    const m = gltf.scene; fitModel(m, CHAR_H); g.add(m);
+    const mixer = new THREE.AnimationMixer(m), act = buildActs(mixer, gltf.animations, CHAR_URL);
+    G3.chr = { mixer, act, cur: act.idle }; if (act.idle) act.idle.play();
+    console.log(TAG, 'Jugador listo:', gltf.animations.map(c => c.name).join(', ')); chrTick(true);
+  }, () => chrTick(false));
+  return g;
+}
+// Peatón con modelo GLB: reemplaza su figura voxel (que se conserva como respaldo si el archivo falta)
+function attachNpc(n, i, gltf, url) {
+  const g = new THREE.Group(), m = gltf.scene; fitModel(m, CHAR_H * (.94 + (i % 5) * .03)); g.add(m);
+  const mixer = new THREE.AnimationMixer(m), act = buildActs(mixer, gltf.animations, url);
+  n.ctl = { mixer, act, cur: act.idle }; n.gy = 0; if (act.idle) { act.idle.play(); act.idle.time = Math.random() * act.idle.getClip().duration; }
+  n.glb = g; scene3.add(g); const B = G3.np;
+  [B.body, B.head].forEach(b => b.setMatrixAt(i, ZERO)); [B.arm, B.leg].forEach(b => { b.setMatrixAt(2 * i, ZERO); b.setMatrixAt(2 * i + 1, ZERO); });
+  chrTick(true);
+}
+// Cambia de animación con crossFade (sin saltos); la velocidad de caminar/correr sigue a la del movimiento para no deslizar los pies
+function animState(C, st, dt, ratio) {
+  if (!C) return;
+  const next = C.act[st];
+  if (next && next !== C.cur) { next.reset().play(); if (C.cur) C.cur.crossFadeTo(next, .2, false); C.cur = next; }
+  if (C.cur) C.cur.timeScale = (st === 'walk' || st === 'run') ? ratio : 1;
+  C.mixer.update(dt);
+}
+// ---- Camioneta manejable (luces, ruedas giratorias, suspensión) ----
+function makeCar() {
+  const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
+  const box = (par, w, hh, d, m, x, y, z) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, hh, d), m); o.position.set(x, y, z); o.castShadow = true; par.add(o); return o; };
+  const paint = new THREE.MeshStandardMaterial({ color: 0x0E8F8C, metalness: .5, roughness: .35 });
+  box(body, 3.8, .7, 1.7, paint, 0, .75, 0); box(body, 1.9, .6, 1.5, MAT.glass, -.3, 1.4, 0);
+  [-.65, .65].forEach(z => { box(body, .06, .16, .3, MAT.lamp, 1.92, .85, z); box(body, .06, .14, .3, MAT.red, -1.92, .85, z); const hs = new THREE.Sprite(MAT.halo); hs.position.set(2.1, .85, z); hs.scale.set(1.8, 1.8, 1); body.add(hs); });   // faros y pilotos
+  g.userData = { body, wheels: [], pivots: [] };
+  [[1.2, -.85, 1], [1.2, .85, 1], [-1.2, -.85, 0], [-1.2, .85, 0]].forEach(([x, z, fr]) => {
+    const pv = new THREE.Group(); pv.position.set(x, .35, z); g.add(pv);
+    const w = new THREE.Mesh(new THREE.CylinderGeometry(.35, .35, .28, 14).rotateX(Math.PI / 2), MAT.steelD); w.castShadow = true; pv.add(w);
+    g.userData.wheels.push(w); if (fr) g.userData.pivots.push(pv);
+  });
+  return g;
+}
+function groundAt(x, z, y) {
+  const hb = state.b / 2, az = Math.abs(z);
+  if (Math.abs(x - BGX) < 1.6 && az < hb + 1.6 && y > .9) return 1.425;   // cubierta del puente (se sube saltando)
+  if (az < hb) return -state.H;                                            // solera del canal
+  if (az < hb + .3) return .1;                                             // muro y coronamiento
+  return az < hb + 1.6 ? .12 : 0;                                          // andén / calzada
+}
+function waterAt(x, z) {                                                   // tirante y velocidad local donde está el jugador
+  const hb = state.b / 2, az = Math.abs(z), xv = x + XC;
+  if (az < hb) { if (xv <= LC) { const d = Math.max(.02, Math.min(R.depthAt(xv), state.H)); return { d, V: state.Q / (state.b * d), tr: true }; } return { d: .15, V: R.v0, tr: true }; }
+  const f = G3.flood;
+  if (f && x > f.x0 && x < f.x1 && az < hb + .3 + f.w) return { d: Math.min(1.2, .1 + R.dFlood), V: .6, tr: false };
+  return { d: 0, V: 0, tr: false };
+}
+/* =====================================================================
+   FASE 3: ATMÓSFERA. Ciclo día/noche, estrellas, relámpagos con trueno,
+   hojas con viento, salpicaduras y brillo de luces (halos aditivos, sin postproceso).
+   ===================================================================== */
+const _ca = new THREE.Color(), _cb = new THREE.Color(), _cc = new THREE.Color(), SPN = 80, LVN = 70;
+function initFx() {
+  G3.tod = 10; G3.todMode = 0; G3.skyT = 0; G3.fl = 0; G3.lt = 5; G3.clock = '10:00';
+  const pts = (n, mat) => { const p = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3)), mat); p.frustumCulled = false; scene3.add(p); return p; };
+  G3.stars = pts(400, new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0, fog: false, depthWrite: false }));
+  const sp = G3.stars.geometry.attributes.position;
+  for (let i = 0; i < 400; i++) { const a = Math.random() * 6.283, e = .1 + Math.random() * 1.4; sp.setXYZ(i, Math.cos(a) * Math.cos(e) * 160, Math.sin(e) * 160, Math.sin(a) * Math.cos(e) * 160); }
+  G3.bolt = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(60), 3)), new THREE.LineBasicMaterial({ color: 0xE8F0FF, fog: false }));
+  G3.bolt.frustumCulled = false; G3.bolt.visible = false; scene3.add(G3.bolt);
+  G3.lv = pts(LVN, new THREE.PointsMaterial({ color: 0x7A9B3F, size: .14 }));                // hojas
+  const lp = G3.lv.geometry.attributes.position; for (let i = 0; i < LVN; i++) lp.setXYZ(i, (Math.random() - .5) * LT, .5 + Math.random() * 4.5, (i % 2 ? 1 : -1) * (GW - 5.4 + (Math.random() - .5) * 3));
+  G3.spp = pts(SPN, new THREE.PointsMaterial({ color: 0xFFFFFF, size: .13, transparent: true, opacity: .85 }));   // pool de salpicaduras
+  G3.sp = { pos: G3.spp.geometry.attributes.position.array, vel: new Float32Array(SPN * 3), life: new Float32Array(SPN), i: 0 };
+  for (let i = 0; i < SPN; i++) G3.sp.pos[i * 3 + 1] = -50;
+}
+function splash(x, y, z, n) {
+  const S = G3.sp, r = Math.random;
+  for (let k = 0; k < n; k++) { const i = S.i = (S.i + 1) % SPN; S.pos[i * 3] = x + (r() - .5) * .4; S.pos[i * 3 + 1] = y; S.pos[i * 3 + 2] = z + (r() - .5) * .4; S.vel[i * 3] = (r() - .5) * 2.5; S.vel[i * 3 + 1] = 2 + r() * 2.5; S.vel[i * 3 + 2] = (r() - .5) * 2.5; S.life[i] = .7 + r() * .5; }
+}
+function thunder() {                                                         // ruido grave filtrado, con retardo de distancia
+  if (!AU.ctx) return;
+  const c = AU.ctx, t = c.currentTime + .4 + Math.random() * 1.2, s = c.createBufferSource(), lp = c.createBiquadFilter(), g = c.createGain();
+  s.buffer = AU.nb; lp.type = 'lowpass'; lp.frequency.value = 220; g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.7, t + .05); g.gain.exponentialRampToValueAtTime(.001, t + 2.2);
+  s.connect(lp).connect(g).connect(c.destination); s.start(t); s.stop(t + 2.3);
+}
+function strike() {
+  const b = G3.bolt.geometry.attributes.position; let x = (Math.random() - .5) * 90, y = 60; const z = -25 - Math.random() * 30;
+  for (let i = 0; i < 10; i++) { const nx = x + (Math.random() - .5) * 8, ny = y - 6.2; b.setXYZ(2 * i, x, y, z); b.setXYZ(2 * i + 1, nx, ny, z); x = nx; y = ny; }
+  b.needsUpdate = true; G3.fl = .3; thunder();
+}
+function skyStep(dt) {
+  G3.skyT -= dt; if (G3.todMode === 0) G3.tod = (G3.tod + dt / 15) % 24;       // 1 hora simulada cada 15 s
+  const a = (G3.tod - 6) / 12 * Math.PI, el = Math.sin(a), up = el >= 0 ? 1 : -1, day = clamp(el * 2 + .35, 0, 1), dusk = clamp(1 - Math.abs(el) * 4, 0, 1), rain = G3.rain.visible ? 1 : 0;
+  const fl = G3.fl > 0 ? (Math.sin(G3.fl * 70) > -.2 ? 1 : .3) : 0, sun = G3.sun;
+  sun.position.set(-Math.cos(a) * 28 * up, el * up * 28 + 3, 12);              // el sol de día y la luna de noche
+  sun.intensity = (el >= 0 ? .15 + .8 * Math.min(1, el * 2) : .16) * (1 - .5 * rain);
+  sun.color.setHex(el >= 0 ? 0xFFF3DC : 0x8FA8FF).lerp(_ca.setHex(0xFF9A5A), el >= 0 ? dusk : 0);
+  G3.hemi.intensity = .18 + .67 * day + fl * 1.2;
+  if (G3.skyT <= 0 || fl) {                                                    // el degradado del cielo se redibuja ~3 veces por segundo
+    G3.skyT = .3;
+    _ca.setHex(0x050B1E).lerp(_cb.setHex(0x8DBCE0), day).lerp(_cb.setHex(0x7C8791), .5 * rain * day).lerp(_cb.setHex(0xFFFFFF), fl * .6);
+    _cc.setHex(0x16213D).lerp(_cb.setHex(0xE4EFF7), day).lerp(_cb.setHex(0xF08A4B), dusk * .7).lerp(_cb.setHex(0x9AA5AE), .4 * rain * day).lerp(_cb.setHex(0xFFFFFF), fl * .6);
+    const c = G3.skyTex.image.getContext('2d'), g = c.createLinearGradient(0, 0, 0, 256);
+    g.addColorStop(0, '#' + _ca.getHexString()); g.addColorStop(1, '#' + _cc.getHexString()); c.fillStyle = g; c.fillRect(0, 0, 2, 256);
+    G3.skyTex.needsUpdate = true; scene3.fog.color.copy(_cc);
+  }
+  G3.stars.material.opacity = clamp(1 - day * 1.6, 0, 1) * (1 - .7 * rain);
+  const cl = .25 + .75 * day; G3.clouds.forEach(s => s.material.color.setScalar(cl));
+  MAT.wins.forEach(m => { m.emissiveIntensity = (1 - day) * .9; }); MAT.halo.opacity = (1 - day) * .9;   // ventanas y luces se encienden de noche
+  const q = Math.floor(G3.tod * 4);
+  if (q !== G3.tq) { G3.tq = q; const h = Math.floor(G3.tod), mm = Math.floor((G3.tod - h) * 4) * 15; G3.clock = String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'); $('btnTime').textContent = (G3.todMode ? 'Hora fija ' : 'Hora ') + G3.clock; }
+}
+function fxStep(dt) {
+  skyStep(dt);
+  if (G3.rain.visible) { G3.lt -= dt; if (G3.lt <= 0) { G3.lt = 6 + Math.random() * 10; strike(); } }   // relámpagos solo con lluvia
+  G3.fl = Math.max(0, G3.fl - dt); G3.bolt.visible = G3.fl > .12;
+  const L = G3.lv.geometry.attributes.position, wind = G3.rain.visible ? 2.6 : .7;                    // hojas movidas por el viento
+  for (let i = 0; i < LVN; i++) {
+    let x = L.getX(i) + wind * (1 + .5 * Math.sin(T + i)) * dt, y = L.getY(i) - .35 * dt + Math.sin(T * 2 + i) * .15 * dt; const z = L.getZ(i) + Math.sin(T * 1.3 + i) * .5 * dt;
+    if (x > XC) { x = -XC; y = 1 + Math.random() * 4; } if (y < .1) y = 3 + Math.random() * 2; L.setXYZ(i, x, y, z);
+  }
+  L.needsUpdate = true;
+  const S = G3.sp;
+  for (let i = 0; i < SPN; i++) if (S.life[i] > 0) {
+    S.life[i] -= dt; S.vel[i * 3 + 1] -= 9.8 * dt; S.pos[i * 3] += S.vel[i * 3] * dt; S.pos[i * 3 + 1] += S.vel[i * 3 + 1] * dt; S.pos[i * 3 + 2] += S.vel[i * 3 + 2] * dt;
+    if (S.life[i] <= 0) S.pos[i * 3 + 1] = -50;
+  }
+  G3.spp.geometry.attributes.position.needsUpdate = true;
+}
+function initGame() {
+  G3.car = makeCar(); scene3.add(G3.car); G3.cs = { x: -XC + 6, z: 0, h: 0, v: 0, steer: 0, pv: 0 };
+  G3.ring = new THREE.Mesh(new THREE.TorusGeometry(2, .12, 8, 28).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x2A9466, emissive: 0x2A9466, emissiveIntensity: .8 }));
+  G3.ring.visible = false; scene3.add(G3.ring); G3.done = {}; G3.pois = []; G3.solids = []; G3.zoom = 4.5; G3.cd = 4.5; G3.cam = 0; G3.ph = 0; initCrowd(); initFx();
+}
+function placeCar() { const c = G3.cs; G3.car.position.set(c.x, 0, c.z); G3.car.rotation.y = c.h; }
+const toast = t => { G3.msg = t; G3.msgT = 6; };
+const adiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+const _t = new THREE.Vector3(), _w = new THREE.Vector3(), _p = new THREE.Vector3();   // temporales reutilizados (sin basura por cuadro)
+const VMAX = 14;                                                            // velocidad máxima del vehículo (m/s, ≈ 50 km/h)
+
+// ---- Sonido (Web Audio, sintetizado: no requiere archivos). Volumen según distancia ----
+const AU = {};
+function audioInit() {
+  if (AU.ctx) { AU.ctx.resume(); return; }
+  const c = AU.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const osc = (type) => { const o = c.createOscillator(), g = c.createGain(); o.type = type; g.gain.value = 0; o.connect(g).connect(c.destination); o.start(); return [o, g]; };
+  const buf = c.createBuffer(1, c.sampleRate * 2, c.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const src = c.createBufferSource(), lp = c.createBiquadFilter(); AU.nb = buf; src.buffer = buf; src.loop = true; lp.type = 'lowpass'; lp.frequency.value = 650;
+  AU.w = c.createGain(); AU.w.gain.value = 0; src.connect(lp).connect(AU.w).connect(c.destination); src.start();
+  [AU.e, AU.eg] = osc('sawtooth'); [AU.a, AU.ag] = osc('square');
+}
+function audioStep(px, pz) {
+  if (!AU.ctx) return;
+  const t = AU.ctx.currentTime, hb = state.b / 2, dist = Math.max(0, Math.abs(pz) - hb);
+  AU.w.gain.setTargetAtTime(Math.min(.3, .09 * (1 + state.Q / 10) / (1 + dist / 3)), t, .1);       // el ruido del agua crece con Q y decae con la distancia
+  AU.eg.gain.setTargetAtTime(G3.driving ? .035 : 0, t, .1); AU.e.frequency.setTargetAtTime(50 + Math.abs(G3.cs.v) * 11, t, .1);
+  AU.ag.gain.setTargetAtTime(R.overflow ? .02 / (1 + dist / 12) : 0, t, .05); AU.a.frequency.value = (t * 2 % 1) < .5 ? 660 : 880;   // alarma de inundación
+}
+function audioMute() { if (AU.ctx) [AU.w, AU.eg, AU.ag].forEach(g => g.gain.setTargetAtTime(0, AU.ctx.currentTime, .05)); }
+
+// ---- Cámara en tercera persona: seguimiento suave, zoom, colisión con edificios y alejamiento al correr ----
+function updateCam(dt, tx, ty, tz, dist) {
+  const cp = Math.cos(G3.pit); _w.set(Math.sin(G3.yaw) * cp, Math.sin(G3.pit), Math.cos(G3.yaw) * cp); _t.set(tx, ty, tz);
+  if (G3.cam === 2 && !G3.driving) { camera.position.set(tx, ty + .12, tz); camera.lookAt(_p.copy(_t).addScaledVector(_w, -3).setY(ty + .12 - _w.y * 3)); return; }   // primera persona
+  G3.ray.set(_t, _w); G3.ray.far = dist;
+  const hit = G3.ray.intersectObjects(G3.solids, false)[0], d = hit ? Math.max(.8, hit.distance - .3) : dist;   // nunca atraviesa objetos
+  G3.cd += (d - G3.cd) * Math.min(1, (d < G3.cd ? 20 : 4) * dt);
+  _p.copy(_t).addScaledVector(_w, G3.cd); _p.y = Math.max(_p.y, groundAt(_p.x, _p.z, 0) + .4);
+  camera.position.lerp(_p, Math.min(1, 14 * dt)); camera.lookAt(_t);
+}
+
+function respawn(msg) { G3.pl = { x: -XC + 4, y: .12, z: state.b / 2 + .9, vy: 0, head: Math.PI / 2, act: 0 }; G3.dang = 0; if (msg) toast(msg); }
+function startPlay() {
+  G3.play = true; controls.enabled = false; controls.autoRotate = false; tween = null; world.rotation.z = 0;
+  G3.yaw = -Math.PI / 2; G3.pit = .3; G3.mi = 0; G3.done = {}; G3.driving = false; G3.msg = ''; respawn(); audioInit();
+  G3.player.visible = true; G3.ring.visible = true; G3.ring.position.set(XC - 5, .15, G3.cs.z);
+  $('btnPlay').textContent = 'Salir del juego'; cv.parentElement.classList.add('playing'); tip.style.display = 'none';
+}
+function stopPlay() {
+  G3.play = false; G3.driving = false; controls.enabled = true; G3.player.visible = false; G3.ring.visible = false; G3.keys = {}; G3.ray.far = Infinity;
+  if (document.pointerLockElement) document.exitPointerLock(); audioMute();
+  world.rotation.z = -Math.min(state.S0 * EXAG, .3);
+  $('btnPlay').textContent = 'Jugar'; cv.parentElement.classList.remove('playing');
+  const v = VIEWS.gen; tween = { t0: performance.now(), dur: 900, p0: camera.position.clone(), q0: controls.target.clone(), p1: new THREE.Vector3(...v.p), q1: new THREE.Vector3(...v.t) };
+}
+function cycleCam() { G3.cam = (G3.cam + 1) % 3; G3.zoom = G3.cam === 1 ? 10 : 4.5; toast(['Cámara cercana', 'Cámara lejana', 'Primera persona'][G3.cam]); }
+
+// ---- Interacción (E) con paneles: compuerta, limnímetro, puente y bomba. Solo leen o accionan controles existentes ----
+function interact() {
+  const P = G3.pl; let best = null, bd = 2.6;
+  G3.pois.forEach(q => { const d = Math.hypot(P.x - q.x, P.z - q.z); if (d < bd) { bd = d; best = q; } });
+  if (!best) return; P.act = .7;
+  if (best.id === 'gate') {
+    const open = state.hg >= 1; $('gate').checked = true; $('gate').dispatchEvent(new Event('change'));
+    setValue('hg', open ? .3 : state.H); toast(open ? 'Compuerta cerrada: el tirante aguas arriba va a subir.' : 'Compuerta abierta.');
+  } else if (best.id === 'gauge') { G3.done.gauge = true; toast(`Limnímetro: y = ${fmt(R.yEff, 2)} m · borde libre ${fmt(R.freeboard, 2)} m · Fr = ${fmt(R.Fr, 2)} (${R.regime})`); }
+  else if (best.id === 'bridge') { G3.done.bridge = true; toast(`Puente: tirante ${fmt(R.yEff, 2)} m bajo muros de ${fmt(state.H, 2)} m. ${R.overflow ? 'Riesgo de arrastre de escombros.' : 'Sin riesgo hidráulico.'}`); }
+  else toast(`Bomba de achique: excedente ${fmt(R.Qexc, 2)} m³/s · ${fmt(R.Vesc, 0)} m³ · costo ${COP.format(R.cost)}`);
+}
+// ---- Vehículo (F para subir o bajar) ----
+function toggleCar() {
+  const P = G3.pl, c = G3.cs;
+  if (!G3.driving) {
+    if (Math.hypot(P.x - c.x, P.z - c.z) > 3.8) return;
+    G3.driving = true; G3.player.visible = false; G3.cs.moved = true; G3.pit = .25;
+  } else {
+    G3.driving = false; c.v = 0; P.x = c.x + Math.sin(c.h) * 2.2; P.z = c.z + Math.cos(c.h) * 2.2; P.y = groundAt(P.x, P.z, 0); P.vy = 0; G3.player.visible = G3.cam !== 2;
+  }
+}
+function driveStep(dt) {
+  const c = G3.cs, k = G3.keys, hb = state.b / 2, acc = (k.w ? 1 : 0) - (k.s ? 1 : 0), u = G3.car.userData;
+  c.v += (acc > 0 ? 7 : acc < 0 ? (c.v > 0 ? -14 : -5) : 0) * dt;
+  if (k.jump) c.v -= Math.sign(c.v) * Math.min(Math.abs(c.v), 18 * dt); else if (!acc) c.v -= c.v * Math.min(1, 1.2 * dt);   // freno y resistencia a la rodadura
+  c.v = clamp(c.v, -5, VMAX);
+  c.steer += (((k.a ? 1 : 0) - (k.d ? 1 : 0)) * .5 - c.steer) * Math.min(1, 6 * dt);
+  c.h += c.steer * c.v * dt * .55;                                         // modelo de bicicleta simplificado
+  const nx = c.x + Math.cos(c.h) * c.v * dt, nz = c.z - Math.sin(c.h) * c.v * dt, az = Math.abs(nz);
+  if (az <= GW - 3.1 && az >= hb + 1.7 && Math.abs(nx) <= XC - 2) { c.x = nx; c.z = nz; } else c.v *= -.3;     // choque contra bordes y canal
+  placeCar();
+  u.wheels.forEach(w => { w.rotation.z -= c.v * dt / .35; }); u.pivots.forEach(pv => { pv.rotation.y = c.steer * .6; });
+  u.body.rotation.z += (-(c.v - c.pv) * .25 - u.body.rotation.z) * Math.min(1, 8 * dt); u.body.rotation.x = -c.steer * c.v * .008;   // cabeceo y balanceo
+  u.body.position.y = Math.sin(G3.ph * 3) * .012 * Math.min(1, Math.abs(c.v)); c.pv = c.v;
+}
+// ---- Paso del jugador (fisica de caminar + animaciones + cámara) ----
+function playStep(dt) {
+  const P = G3.pl, k = G3.keys, s = state, hb = s.b / 2, H = s.H, hgE = Math.min(s.hg, H), gx = LC - XC;
+  G3.ph += dt;
+  if (G3.driving) {
+    driveStep(dt); const c = G3.cs;
+    if (Math.abs(c.v) > 1) G3.yaw += adiff(Math.atan2(-Math.cos(c.h), Math.sin(c.h)), G3.yaw) * Math.min(1, 1.5 * dt);   // la cámara se acomoda detrás
+    G3.cd = Math.max(G3.cd, 3); updateCam(dt, c.x, 1.6, c.z, G3.zoom * 1.5 + c.v * .15);
+    if (Math.hypot(c.x - G3.ring.position.x, c.z - G3.ring.position.z) < 3.5) G3.done.drive = true;
+    G3.ring.rotation.y += dt; if (G3.flood && Math.abs(c.v) > 3 && c.x > G3.flood.x0 && c.x < G3.flood.x1 && Math.abs(c.z) < hb + .3 + G3.flood.w) splash(c.x, .1, c.z, 3);
+    audioStep(c.x, c.z); return;
+  }
+  const sy = Math.sin(G3.yaw), cy = Math.cos(G3.yaw), f = (k.w ? 1 : 0) - (k.s ? 1 : 0), rr = (k.d ? 1 : 0) - (k.a ? 1 : 0);
+  let dx = -sy * f + cy * rr, dz = -cy * f - sy * rr; const len = Math.hypot(dx, dz) || 1; dx /= len; dz /= len;
+  const w = waterAt(P.x, P.z), surf = w.d > 0 ? (w.tr ? -H + w.d : w.d) : -9, wet = Math.max(0, surf - P.y), haz = wet * w.V;
+  const moving = f !== 0 || rr !== 0, run = moving && k.shift, speed = (run ? 6 : 3.2) * Math.max(.25, 1 - wet * .45);
+  let vx = moving ? dx * speed : 0, vz = moving ? dz * speed : 0;
+  if (w.tr && wet > .2) vx += w.V * .35 * Math.min(1, wet);                 // la corriente empuja aguas abajo
+  const blocked = (x, z) => groundAt(x, z, P.y) - P.y > .5 || (s.gate && Math.abs(z) < hb && Math.abs(x - gx) < .2 && P.y < -H + hgE + 1.7);
+  const nx = clamp(P.x + vx * dt, -XC + .8, XC - .8), nz = clamp(P.z + vz * dt, -(GW - 3.1), GW - 3.1);
+  if (!blocked(nx, nz)) { P.x = nx; P.z = nz; } else if (!blocked(nx, P.z)) P.x = nx; else if (!blocked(P.x, nz)) P.z = nz;
+  const g0 = groundAt(P.x, P.z, P.y), onG = P.y <= g0 + .02;
+  if (k.jump && onG) P.vy = (Math.abs(P.z) < hb && P.y < -.1 && Math.abs(P.z) > hb - .8) ? Math.sqrt(2 * 20 * (H + .7)) : 6;   // salto asistido junto al muro para salir del canal
+  P.vy -= 20 * dt; P.y += P.vy * dt; const g1 = groundAt(P.x, P.z, P.y); if (P.y <= g1) { P.y = g1; P.vy = 0; }
+  if (haz > HV_MAX) { G3.dang += dt; if (G3.dang > 1.5) respawn('La corriente te arrastró: h·V superó ' + HV_MAX + ' m²/s.'); } else G3.dang = Math.max(0, G3.dang - dt);
+  P.act = Math.max(0, P.act - dt);
+
+  // Estado de animación, orientación del cuerpo y de la cabeza (mira hacia donde apunta la cámara)
+  const air = P.y > g0 + .05, st = air ? (P.vy > .5 ? 'jump' : 'fall') : P.act > 0 ? 'interact' : moving ? (run ? 'run' : 'walk') : 'idle';
+  const pl = G3.player; pl.position.set(P.x, P.y, P.z);
+  if (moving) P.head += adiff(Math.atan2(dx, dz), P.head) * Math.min(1, dt * 12);
+  pl.rotation.y = P.head; animState(G3.chr, st, dt, speed / (run ? 6 : 3.2)); pl.visible = G3.cam !== 2;
+
+  // La cámara gira hacia donde te mueves (se pausa 1.5 s si mueves el mouse)
+  G3.lookT = Math.max(0, (G3.lookT || 0) - dt);
+  if (moving && G3.lookT <= 0 && !(f < 0 && rr === 0)) G3.yaw += adiff(Math.atan2(-dx, -dz), G3.yaw) * Math.min(1, (f > 0 ? 2.2 : .8) * dt);
+  G3.dz = (G3.dz || G3.zoom) + ((G3.zoom * (run ? 1.25 : 1)) - (G3.dz || G3.zoom)) * Math.min(1, 4 * dt);   // al correr la cámara se aleja
+  updateCam(dt, P.x, P.y + 1.5, P.z, G3.dz);
+  G3.ring.rotation.y += dt; audioStep(P.x, P.z);
+  G3.wet = wet; G3.wV = w.V; G3.haz = haz;
+  const inW = wet > .03; if (inW && (!G3.inW || moving || P.vy < -3)) splash(P.x, surf, P.z, G3.inW ? 2 : 16); G3.inW = inW;
+}
+// ---- HUD: misiones, brújula, velocidad, avisos y minimapa ----
+const MIS = [
+  { t: 'Inspecciona el canal: lee el limnímetro (panel blanco, tecla E)', ok: () => G3.done.gauge },
+  { t: 'Cierra la compuerta (panel naranja, E) y observa la inundación', ok: () => G3.done.close },
+  { t: 'Evita la inundación: reabre la compuerta', ok: () => !R.overflow },
+  { t: 'Revisa el puente: lee su panel (E)', ok: () => G3.done.bridge },
+  { t: 'Sube a la camioneta (F) y conduce hasta el aro verde', ok: () => G3.done.drive }
+];
+const mc = $('mini').getContext('2d'), CARD = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
+let hudCache = {};
+const setTxt = (id, html) => { if (hudCache[id] !== html) { hudCache[id] = html; $(id).innerHTML = html; } };
+function hudStep() {
+  const P = G3.pl, c = G3.cs, drv = G3.driving, hb = state.b / 2;
+  if (R.overflow && state.hg < 1) G3.done.close = true;
+  if (G3.mi < MIS.length && MIS[G3.mi].ok()) { G3.mi++; toast(G3.mi < MIS.length ? 'Misión cumplida. Siguiente objetivo disponible.' : 'Todas las misiones completadas.'); }
+  setTxt('mis', MIS.map((m, i) => i < G3.mi ? `<s>✓ ${m.t}</s>` : i === G3.mi ? `<b>▶ ${m.t}</b>` : `<span style="opacity:.55">${m.t}</span>`).join('<br>'));
+  const deg = ((-G3.yaw * 180 / Math.PI) % 360 + 360) % 360;
+  setTxt('cmp', `${CARD[Math.round(deg / 45) % 8]} ${Math.round(deg)}°`);
+  const px = drv ? c.x : P.x, pz = drv ? c.z : P.z;
+  setTxt('spd', drv ? `Vehículo ${fmt(Math.abs(c.v) * 3.6, 0)} km/h` : `${fmt(Math.hypot(G3.keys.shift ? 6 : 3.2, 0) * ((G3.keys.w || G3.keys.a || G3.keys.s || G3.keys.d) ? 1 : 0), 1)} m/s`);
+  let prompt = '';
+  if (drv) prompt = 'F: bajar · Espacio: freno';
+  else if (Math.hypot(P.x - c.x, P.z - c.z) < 3.8) prompt = 'Presiona F para conducir';
+  else { let bd = 2.6; G3.pois.forEach(q => { const d = Math.hypot(P.x - q.x, P.z - q.z); if (d < bd) { bd = d; prompt = 'Presiona E para interactuar: ' + ({ gate: 'compuerta', gauge: 'limnímetro', bridge: 'puente', pump: 'bomba' })[q.id]; } }); }
+  setTxt('prm', prompt); $('prm').style.opacity = prompt ? 1 : 0;
+  if (G3.msgT > 0) { G3.msgT -= 1 / 60; if (G3.msgT <= 0) G3.msg = ''; }
+  const risk = G3.haz > HV_MAX ? '<span class="bad">ALTO: te arrastra</span>' : G3.haz > .4 ? '<span class="bad">medio</span>' : '<span class="ok">bajo</span>';
+  setTxt('hud', G3.clock + ' · Caudal ' + fmt(state.Q, 1) + ' m³/s · y = ' + fmt(R.yEff, 2) + ' m · ' + (R.overflow ? '<span class="bad">INUNDACIÓN</span>' : '<span class="ok">estable</span>') +
+    (!drv && G3.wet > 0 ? `<br>Agua h = ${fmt(G3.wet, 2)} m · V = ${fmt(G3.wV, 2)} m/s · h·V = ${fmt(G3.haz, 2)} ${risk}` : '') + (G3.msg ? `<br><span class="ok">${G3.msg}</span>` : '') +
+    '<br><small>WASD mover · Shift correr · Espacio saltar · E · F · R reiniciar · C cámara · rueda zoom</small>');
+  // Minimapa (arriba = norte = -z)
+  const SX = 160 / LT, SZ = 120 / (2 * GW), X = x => (x + XC) * SX, Z = z => (z + GW) * SZ;
+  mc.fillStyle = '#5C656E'; mc.fillRect(0, 0, 160, 120);
+  mc.fillStyle = R.overflow ? '#C63A28' : '#2F8FD3'; mc.fillRect(0, Z(-hb), 160, 2 * hb * SZ);
+  if (G3.flood) { mc.fillStyle = 'rgba(31,134,200,.55)'; mc.fillRect(X(G3.flood.x0), Z(-hb - G3.flood.w), (G3.flood.x1 - G3.flood.x0) * SX, (2 * hb + 2 * G3.flood.w) * SZ); }
+  mc.fillStyle = '#E3E9EE'; mc.fillRect(X(-XC + 8) - 4, Z(-hb) - 1, 8, 2 * hb * SZ + 2);
+  mc.fillStyle = '#E2A012'; G3.pois.forEach(q => mc.fillRect(X(q.x) - 2, Z(q.z) - 2, 4, 4));
+  mc.fillStyle = '#fff'; G3.npc.forEach(n => mc.fillRect(X(n.x) - 1, Z(n.z) - 1, 2, 2)); mc.fillStyle = '#E9C46A'; G3.tr.forEach(v => mc.fillRect(X(v.x) - 3, Z(v.z) - 1.5, 6, 3));
+  mc.fillStyle = '#2A9466'; mc.beginPath(); mc.arc(X(G3.ring.position.x), Z(G3.ring.position.z), 4, 0, 6.3); mc.fill();
+  mc.fillStyle = '#0E8F8C'; mc.fillRect(X(c.x) - 3, Z(c.z) - 2, 6, 4);
+  mc.save(); mc.translate(X(px), Z(pz)); mc.rotate(drv ? -c.h + Math.PI / 2 : -P.head + Math.PI); mc.fillStyle = '#fff'; mc.beginPath(); mc.moveTo(0, -6); mc.lineTo(4, 4); mc.lineTo(-4, 4); mc.fill(); mc.restore();
+}
+$('btnPlay').addEventListener('click', () => { if (!HAS3D || !camera) return; G3.play ? stopPlay() : startPlay(); });
+const KEYMAP = { KeyW:'w', ArrowUp:'w', KeyS:'s', ArrowDown:'s', KeyA:'a', ArrowLeft:'a', KeyD:'d', ArrowRight:'d', ShiftLeft:'shift', ShiftRight:'shift', Space:'jump' };
+const setKey = (e, v) => {
+  if (!G3.play || /INPUT|TEXTAREA/.test((e.target.tagName || ''))) return;
+  if (e.code === 'Escape' && v) { stopPlay(); return; }
+  if (v && !e.repeat) { if (e.code === 'KeyE' && !G3.driving) interact(); else if (e.code === 'KeyF') toggleCar(); else if (e.code === 'KeyR') { respawn(); if (G3.driving) { G3.driving = false; G3.cs.v = 0; } G3.player.visible = true; } else if (e.code === 'KeyC') cycleCam(); }
+  const k = KEYMAP[e.code]; if (k) { G3.keys[k] = v; e.preventDefault(); }
+};
+window.addEventListener('keydown', e => setKey(e, true));
+window.addEventListener('keyup', e => setKey(e, false));
+document.querySelectorAll('#pad [data-k]').forEach(b => {          // botones táctiles
+  b.addEventListener('pointerdown', e => { G3.keys[b.dataset.k] = true; b.setPointerCapture(e.pointerId); });
+  ['pointerup', 'pointercancel'].forEach(ev => b.addEventListener(ev, () => { G3.keys[b.dataset.k] = false; }));
+});
+// Cámara con el mouse (bloqueo de puntero) o arrastrando (táctil); rueda = zoom
+let look = null;
+const rotCam = (dx, dy) => { G3.lookT = 1.5; G3.yaw -= dx * .0025; G3.pit = clamp(G3.pit + dy * .002, .05, 1.3); };
+cv.addEventListener('pointerdown', e => { if (!G3.play) return; if (e.pointerType === 'mouse') cv.requestPointerLock(); else look = { x: e.clientX, y: e.clientY }; });
+document.addEventListener('mousemove', e => { if (G3.play && document.pointerLockElement === cv) rotCam(e.movementX, e.movementY); });
+cv.addEventListener('pointermove', e => { if (G3.play && look) { rotCam(e.clientX - look.x, e.clientY - look.y); look = { x: e.clientX, y: e.clientY }; } });
+['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => cv.addEventListener(ev, () => { look = null; }));
+cv.addEventListener('wheel', e => { if (!G3.play) return; G3.zoom = clamp(G3.zoom + e.deltaY * .005, 2.2, 14); e.preventDefault(); }, { passive: false });
+
+document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => {
+  if (!HAS3D || !camera || G3.play) return;
+  const v = VIEWS[b.dataset.view];
+  tween = { t0: performance.now(), dur: 900, p0: camera.position.clone(), q0: controls.target.clone(), p1: new THREE.Vector3(...v.p), q1: new THREE.Vector3(...v.t) };
+}));
+$('btnOrbit').addEventListener('click', e => { if (!controls) return; controls.autoRotate = !controls.autoRotate; e.currentTarget.textContent = controls.autoRotate ? 'Detener órbita' : 'Órbita automática'; });
+let running = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const btnPause = $('btnPause');
+const syncPause = () => { btnPause.textContent = running ? 'Pausar animación' : 'Reanudar animación'; };
+btnPause.addEventListener('click', () => { running = !running; syncPause(); });
+syncPause();
+
+function resize() {
+  if (renderer) { const w = cv.clientWidth, h = cv.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+  if (R) drawSection(R);
+}
+new ResizeObserver(resize).observe(cv);
+new ResizeObserver(() => { if (R) drawSection(R); }).observe($('section'));
+
+/* =====================================================================
+   8. ACTUALIZACIÓN Y BUCLE DE ANIMACIÓN
+   ===================================================================== */
+function update() {
+  R = solve(state);
+  renderResults(R);
+  renderCharts(R);
+  drawSection(R);
+  rebuild3D(R);
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  if (running) T += dt;
+  if (HAS3D && renderer && !document.hidden) render3D(dt);
+  requestAnimationFrame(frame);
+}
+
+$('btnCsv').addEventListener('click', () => {
+  const rows = [['Variable','Valor','Unidad'],['Q_in',state.Q,'m3/s'],['b',state.b,'m'],['S0',state.S0,'m/m'],['n',state.n,''],['hg',state.hg,'m'],['H',state.H,'m'],
+    ['y_n',R.yn,'m'],['y_c',R.yc,'m'],['A',R.An,'m2'],['P',R.Pn,'m'],['R',R.Rn,'m'],['V',R.Vn,'m/s'],['Fr',R.Fr,''],['Q_capacidad',R.Qcap,'m3/s'],
+    ['Q_excedente',R.Qexc,'m3/s'],['V_escorrentia',R.Vesc,'m3'],['Costo',R.cost,'COP'],['v0',R.v0,'m/s'],['alcance_chorro',R.xL,'m'],['b_optimo',R.bOpt,'m'],['L_remanso',R.Lbw,'m']];
+  const csv = rows.map(r => r.map(v => typeof v === 'number' ? v.toFixed(4) : v).join(',')).join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv' }));
+  a.download = 'resultados_simulador.csv'; a.click(); URL.revokeObjectURL(a.href);
+});
+$('btnRain').addEventListener('click', e => {
+  if (!G3.rain) return; G3.rain.visible = !G3.rain.visible;
+  e.currentTarget.textContent = G3.rain.visible ? 'Lluvia: encendida' : 'Lluvia: apagada';
+});
+$('btnTime').addEventListener('click', () => {                        // automático, mediodía, atardecer, noche
+  if (!G3.sun) return; const FIX = [null, 12, 18.5, 23]; G3.todMode = (G3.todMode + 1) % 4; if (FIX[G3.todMode] !== null) G3.tod = FIX[G3.todMode]; G3.skyT = 0; G3.tq = -1;
+});
+if (HAS3D) { try { init3D(); } catch (err) { $('stageStatus').textContent = 'WebGL no disponible en este navegador'; } }
+else $('stageStatus').textContent = 'No se pudo cargar Three.js (revise su conexión)';
+update();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
